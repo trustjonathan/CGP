@@ -11,12 +11,16 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { useAuth } from '@/contexts/useAuth';
 import { AuthScreen } from '@/components/AuthScreen';
 import { AppDataProvider, useAppData } from '@/lib/useAppData';
+import { ReleasePage } from '@/pages/ReleasePage';
 
 function App() {
   return (
     <AuthProvider>
       <HashRouter>
-        <AuthenticatedApp />
+        <Routes>
+          <Route path="/releases" element={<ReleasePage />} />
+          <Route path="*" element={<AuthenticatedApp />} />
+        </Routes>
       </HashRouter>
     </AuthProvider>
   );

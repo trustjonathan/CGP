@@ -14,6 +14,7 @@ import {
   Pencil,
   ShieldCheck,
   LogOut,
+  Download,
 } from 'lucide-react';
 import { useAppData } from '@/lib/useAppData';
 import { useAuth } from '@/contexts/useAuth';
@@ -25,6 +26,7 @@ const navItems = [
   { to: '/simulator', label: 'What-If Simulator', icon: SlidersHorizontal },
   { to: '/vault', label: 'Vault', icon: ShieldCheck },
   { to: '/help', label: 'Help & Privacy', icon: CircleHelp },
+  { to: '/releases', label: 'Desktop & mobile apps', icon: Download },
 ];
 
 export function Sidebar() {

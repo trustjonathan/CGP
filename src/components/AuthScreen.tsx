@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, Mail, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, Download, KeyRound, Mail, ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/useAuth';
 
 type AuthMode = 'sign-in' | 'sign-up' | 'forgot-password' | 'reset-password';
@@ -232,6 +233,10 @@ export function AuthScreen() {
           <div className="mt-7 border-t border-ink-100 pt-4 text-center text-xs leading-5 text-ink-400">
             Your account protects your academic workspace. Your password is handled securely by Supabase Auth.
           </div>
+          <Link to="/releases" className="btn-secondary mt-4 w-full">
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Download the Windows or Android app
+          </Link>
         </section>
       </div>
     </main>
