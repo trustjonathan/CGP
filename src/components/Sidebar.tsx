@@ -13,8 +13,10 @@ import {
   Clock3,
   Pencil,
   ShieldCheck,
+  LogOut,
 } from 'lucide-react';
 import { useAppData } from '@/lib/useAppData';
+import { useAuth } from '@/contexts/useAuth';
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -32,6 +34,9 @@ export function Sidebar() {
   const { data, updateSettings } = useAppData();
   const [profileName, setProfileName] = useState(data.settings.profileName || '');
   const [university, setUniversity] = useState(data.settings.university || '');
+  const [signOutError, setSignOutError] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
+  const { user, signOut } = useAuth();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -41,6 +46,20 @@ export function Sidebar() {
   const saveProfile = () => {
     updateSettings({ profileName: profileName.trim(), university: university.trim() });
     setProfileOpen(false);
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    setSignOutError('');
+    try {
+      const error = await signOut();
+      if (error) setSignOutError(error);
+    } catch (error) {
+      console.error('Unable to sign out.', error);
+      setSignOutError('Sign out failed. Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const changePicture = (file: File | undefined) => {
@@ -128,6 +147,24 @@ export function Sidebar() {
         </nav>
 
         <div className="px-3 pb-4 space-y-3">
+          {signOutError && <p role="alert" className="rounded-lg bg-error-50 px-3 py-2 text-xs text-error-700">{signOutError}</p>}
+          <div className="flex items-center gap-2 px-1">
+            <div className="min-w-0 flex-1">
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-400">Signed in</span>
+              <span className="block truncate text-xs text-ink-600">{user?.email}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-ink-500 hover:bg-ink-100 hover:text-ink-800 disabled:opacity-50"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>{signingOut ? 'Signing out' : 'Sign out'}</span>
+            </button>
+          </div>
           <button onClick={() => setProfileOpen(true)} className="w-full flex items-center gap-3 rounded-xl border border-ink-200 p-3 text-left hover:bg-ink-50 transition-colors">
             {data.settings.profilePicture ? <img src={data.settings.profilePicture} alt="Profile" className="w-10 h-10 rounded-full object-cover" /> : <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center"><UserRound className="w-5 h-5" /></div>}
             <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-ink-900 truncate">{profileLabel}</span><span className="block text-xs text-ink-400 truncate">{data.settings.university || 'Add university'}</span></span>

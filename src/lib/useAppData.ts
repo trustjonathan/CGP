@@ -1,7 +1,30 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { AppData, Semester, CourseUnit, Assessment, CourseDocument, CourseTopic } from './types';
 import { TARGET_CGPA, uid } from './types';
-import { loadLocalData, persistLocalData } from './localSync';
+import { supabase } from './supabase';
+import { useAuth } from '@/contexts/useAuth';
+
+type RecordType = 'semester' | 'course' | 'settings';
+
+interface CloudRecord {
+  id: string;
+  record_type: RecordType;
+  payload: Semester | CourseUnit | AppData['settings'];
+  is_deleted: boolean;
+  revision: number;
+}
+
+interface SaveResult {
+  status: 'saved' | 'conflict';
+  revision: number;
+  conflict_id?: string;
+}
+
+interface OpenConflict {
+  id: string;
+  record_id: string;
+}
 
 const emptyData: AppData = {
   semesters: [],
@@ -13,25 +36,306 @@ function loadData(): AppData {
   return emptyData;
 }
 
-export function useAppData() {
+function recordId(type: RecordType, id: string) {
+  return `${type}:${id}`;
+}
+
+function toCloudRecords(data: AppData): CloudRecord[] {
+  return [
+    ...data.semesters.map((semester) => ({
+      id: recordId('semester', semester.id),
+      record_type: 'semester' as const,
+      payload: semester,
+      is_deleted: false,
+      revision: 0,
+    })),
+    ...data.courses.map((course) => ({
+      id: recordId('course', course.id),
+      record_type: 'course' as const,
+      payload: { ...course, documents: [] },
+      is_deleted: false,
+      revision: 0,
+    })),
+    {
+      id: recordId('settings', 'current'),
+      record_type: 'settings' as const,
+      payload: data.settings,
+      is_deleted: false,
+      revision: 0,
+    },
+  ];
+}
+
+function isCloudRecord(value: unknown): value is CloudRecord {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.id === 'string'
+    && (record.record_type === 'semester' || record.record_type === 'course' || record.record_type === 'settings')
+    && Boolean(record.payload)
+    && typeof record.payload === 'object'
+    && typeof record.is_deleted === 'boolean'
+    && typeof record.revision === 'number'
+    && Number.isInteger(record.revision)
+    && record.revision >= 1;
+}
+
+function isSaveResult(value: unknown): value is SaveResult {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as Record<string, unknown>;
+  const minimumRevision = result.status === 'saved' ? 1 : 0;
+  return typeof result.revision === 'number'
+    && Number.isInteger(result.revision)
+    && result.revision >= minimumRevision
+    && (result.status === 'saved' || result.status === 'conflict')
+    && (result.status !== 'conflict' || typeof result.conflict_id === 'string');
+}
+
+function appDataFromCloudRecords(records: CloudRecord[]): AppData {
+  const active = records.filter((record) => !record.is_deleted);
+  return {
+    semesters: active
+      .filter((record) => record.record_type === 'semester')
+      .map((record) => record.payload as Semester),
+    courses: active
+      .filter((record) => record.record_type === 'course')
+      .map((record) => {
+        const course = record.payload as CourseUnit;
+        return {
+          ...course,
+          assessments: course.assessments || [],
+          topics: course.topics || [],
+          documents: [],
+        };
+      }),
+    settings: (active.find((record) => record.record_type === 'settings')?.payload as AppData['settings'] | undefined)
+      || { targetCGPA: TARGET_CGPA },
+  };
+}
+
+function cloudRecordContent(record: CloudRecord) {
+  return JSON.stringify({
+    record_type: record.record_type,
+    payload: record.payload,
+    is_deleted: record.is_deleted,
+  });
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'An unexpected Supabase error occurred.';
+}
+
+function useAppDataState() {
+  const { user } = useAuth();
+  const userId = user?.id;
   const [data, setData] = useState<AppData>(loadData);
-  const hydrated = useRef(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [syncError, setSyncError] = useState('');
+  const [pendingConflict, setPendingConflict] = useState<OpenConflict | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [syncAttempt, setSyncAttempt] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const ready = useRef(false);
+  const remoteRecords = useRef(new Map<string, CloudRecord>());
+  const syncInProgress = useRef(false);
+  const syncQueued = useRef(false);
 
   useEffect(() => {
+    ready.current = false;
+    remoteRecords.current = new Map();
+    setData(emptyData);
+    setLoading(true);
+    setLoadError('');
+    setSyncError('');
+    setPendingConflict(null);
+
+    const client = supabase;
+    if (!userId || !client) {
+      setLoading(false);
+      setLoadError('Supabase is not available. Sign in again after Supabase is configured.');
+      return;
+    }
+
     let active = true;
-    void loadLocalData().then((localData) => {
-      if (active && localData) setData(localData);
-      hydrated.current = true;
-    }).catch(() => {
-      hydrated.current = true;
+
+    void (async () => {
+      const { data: rows, error } = await client
+        .from('cgpa_records')
+        .select('id, record_type, payload, is_deleted, revision')
+        .eq('user_id', userId);
+      if (!active) return;
+      if (error) throw error;
+      const records: CloudRecord[] = [];
+      for (const row of rows || []) {
+        if (!isCloudRecord(row)) throw new Error('Supabase returned a malformed CGP record.');
+        records.push(row);
+      }
+
+      const { data: conflicts, error: conflictsError } = await client
+        .from('cgpa_record_conflicts')
+        .select('id, record_id')
+        .eq('user_id', userId)
+        .eq('status', 'open')
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (!active) return;
+      if (conflictsError) throw conflictsError;
+
+      remoteRecords.current = new Map(records.map((record) => [record.id, record]));
+      setData(appDataFromCloudRecords(records));
+      setPendingConflict(conflicts?.[0] ?? null);
+      if (conflicts?.length) {
+        setSyncError(`A saved edit conflicts with a newer version of ${conflicts[0].record_id}. Choose which version to keep.`);
+      }
+      ready.current = true;
+      setLoading(false);
+    })().catch((error: unknown) => {
+      if (!active) return;
+      console.error('Unable to load CGP data from Supabase.', error);
+      setLoadError(`CGP could not load your Supabase records. Confirm the CGP database migrations are applied, then retry. ${errorMessage(error)}`);
+      setLoading(false);
     });
+
     return () => { active = false; };
+  }, [userId, loadAttempt]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!ready.current || !userId || !client || pendingConflict) return;
+
+    const timer = window.setTimeout(() => {
+      if (syncInProgress.current) {
+        syncQueued.current = true;
+        return;
+      }
+
+      const currentRecords = remoteRecords.current;
+      const desiredRecords = new Map(toCloudRecords(data).map((record) => [record.id, record]));
+      currentRecords.forEach((record, id) => {
+        if (!record.is_deleted && !desiredRecords.has(id)) {
+          desiredRecords.set(id, { ...record, is_deleted: true, revision: 0 });
+        }
+      });
+
+      const changedRecords = [...desiredRecords.values()].filter((record) => {
+        const previous = currentRecords.get(record.id);
+        return !previous || cloudRecordContent(previous) !== cloudRecordContent(record);
+      });
+      if (!changedRecords.length) return;
+
+      syncInProgress.current = true;
+      setSyncing(true);
+      void (async () => {
+        let conflictFound = false;
+        try {
+          for (const record of changedRecords) {
+            const expectedRevision = currentRecords.get(record.id)?.revision ?? 0;
+            const { data: result, error } = await client.rpc('save_cgpa_record', {
+              p_id: record.id,
+              p_record_type: record.record_type,
+              p_payload: record.payload,
+              p_is_deleted: record.is_deleted,
+              p_expected_revision: expectedRevision,
+            });
+
+            if (error) throw error;
+            if (!isSaveResult(result)) {
+              throw new Error('Supabase returned an invalid save response.');
+            }
+            const saveResult = result;
+            if (saveResult.status === 'conflict') {
+              conflictFound = true;
+              if (!saveResult.conflict_id) throw new Error('Supabase did not return the saved conflict id.');
+              setPendingConflict({ id: saveResult.conflict_id, record_id: record.id });
+              setSyncError(`Both edits were preserved for ${record.id}. Choose which version to keep.`);
+              break;
+            }
+
+            currentRecords.set(record.id, { ...record, revision: saveResult.revision });
+          }
+          if (!conflictFound) setSyncError('');
+        } catch (error) {
+          console.error('Unable to save CGP data to Supabase.', error);
+          setSyncError(`Your change could not be saved to Supabase. Check your connection and retry. ${errorMessage(error)}`);
+        } finally {
+          syncInProgress.current = false;
+          setSyncing(false);
+          if (syncQueued.current) {
+            syncQueued.current = false;
+            setSyncAttempt((attempt) => attempt + 1);
+          }
+        }
+      })();
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [data, pendingConflict, userId, syncAttempt]);
+
+  const retryLoad = useCallback(() => setLoadAttempt((attempt) => attempt + 1), []);
+  const retrySync = useCallback(() => {
+    setSyncError('');
+    setSyncAttempt((attempt) => attempt + 1);
   }, []);
 
-  useEffect(() => {
-    if (!hydrated.current) return;
-    void persistLocalData(data);
-  }, [data]);
+  const resolveConflict = useCallback(async (resolution: 'keep_local' | 'keep_server') => {
+    const client = supabase;
+    if (!pendingConflict || !client || !userId) return;
+
+    const { data: result, error } = await client.rpc('resolve_cgpa_record_conflict', {
+      p_conflict_id: pendingConflict.id,
+      p_resolution: resolution,
+    });
+    if (error) {
+      console.error('Unable to resolve CGP record conflict.', error);
+      setSyncError(`The conflict could not be resolved. ${error.message}`);
+      return;
+    }
+
+    if (!result || typeof result !== 'object' || !('status' in result) || result.status !== 'resolved') {
+      setSyncError('The conflict changed while it was being resolved. Reload the latest cloud data and try again.');
+      setLoadAttempt((attempt) => attempt + 1);
+      return;
+    }
+
+    const { data: rows, error: loadError } = await client
+      .from('cgpa_records')
+      .select('id, record_type, payload, is_deleted, revision')
+      .eq('user_id', userId);
+    if (loadError) {
+      console.error('Unable to refresh CGP records after conflict resolution.', loadError);
+      setSyncError(`The conflict was resolved, but the latest records could not be loaded. ${loadError.message}`);
+      return;
+    }
+
+    const records: CloudRecord[] = [];
+    for (const row of rows || []) {
+      if (!isCloudRecord(row)) {
+        setSyncError('Supabase returned a malformed CGP record. Contact support before continuing.');
+        return;
+      }
+      records.push(row);
+    }
+
+    const { data: conflicts, error: conflictsError } = await client
+      .from('cgpa_record_conflicts')
+      .select('id, record_id')
+      .eq('user_id', userId)
+      .eq('status', 'open')
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (conflictsError) {
+      console.error('Unable to refresh CGP conflicts.', conflictsError);
+      setSyncError(`The records were refreshed, but conflict status could not be loaded. ${conflictsError.message}`);
+      return;
+    }
+
+    remoteRecords.current = new Map(records.map((record) => [record.id, record]));
+    setData(appDataFromCloudRecords(records));
+    setPendingConflict(conflicts?.[0] ?? null);
+    setSyncError(conflicts?.length
+      ? `A saved edit conflicts with a newer version of ${conflicts[0].record_id}. Choose which version to keep.`
+      : '');
+  }, [pendingConflict, userId]);
 
   const addSemester = useCallback((academicYear: string, semesterNumber: number) => {
     const sem: Semester = {
@@ -312,5 +616,27 @@ export function useAppData() {
     setTargetCGPA,
     loadSampleData,
     clearAllData,
+    loading,
+    loadError,
+    syncError,
+    syncing,
+    pendingConflict,
+    retryLoad,
+    retrySync,
+    resolveConflict,
   };
+}
+
+type AppDataContextValue = ReturnType<typeof useAppDataState>;
+const AppDataContext = createContext<AppDataContextValue | null>(null);
+
+export function AppDataProvider({ children }: { children: ReactNode }) {
+  const value = useAppDataState();
+  return createElement(AppDataContext.Provider, { value, children });
+}
+
+export function useAppData() {
+  const context = useContext(AppDataContext);
+  if (!context) throw new Error('useAppData must be used within AppDataProvider.');
+  return context;
 }
