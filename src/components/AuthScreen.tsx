@@ -22,7 +22,7 @@ function getDisplayAuthError(message: string): string {
   return message;
 }
 
-export function AuthScreen() {
+export function AuthScreen({ onBack }: { onBack?: () => void } = {}) {
   const {
     isPasswordRecovery,
     configurationError,
@@ -118,7 +118,13 @@ export function AuthScreen() {
         : 'Update password';
 
   return (
-    <main className="min-h-screen bg-[#f3f6fa] px-4 py-10 sm:px-6 flex items-center justify-center">
+    <main className="min-h-screen bg-[#f3f6fa] px-4 py-10 sm:px-6 flex flex-col items-center justify-center">
+      {onBack && (
+        <button type="button" className="btn-ghost mb-4" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" />
+          Back to setup preview
+        </button>
+      )}
       <div className="w-full max-w-[440px]">
         <div className="mb-7 flex items-center justify-center gap-3">
           <img src="/cgp-mark.svg" alt="" className="h-12 w-12 rounded-2xl shadow-sm" />

@@ -19,6 +19,7 @@ import { ImportSetupPage } from '@/pages/ImportSetupPage';
 import { SyncSettingsPage } from '@/pages/SyncSettingsPage';
 import { WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { PublicImportPage } from '@/pages/PublicImportPage';
 
 function App() {
   return (
@@ -26,10 +27,33 @@ function App() {
       <HashRouter>
         <Routes>
           <Route path="/releases" element={<ReleasePage />} />
+          <Route path="/import/:token" element={<ImportRoute />} />
           <Route path="*" element={<AuthenticatedApp />} />
         </Routes>
       </HashRouter>
     </AuthProvider>
+  );
+}
+
+function ImportRoute() {
+  const { user, loading, isPasswordRecovery } = useAuth();
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-ink-50 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-sm font-medium text-ink-500">
+          <img src="/cgp-mark.svg" alt="" className="h-9 w-9 rounded-xl" />
+          Opening your shared setup…
+        </div>
+      </main>
+    );
+  }
+
+  if (!user || isPasswordRecovery) return <PublicImportPage />;
+  return (
+    <AppDataProvider>
+      <CloudWorkspace />
+    </AppDataProvider>
   );
 }
 
