@@ -8,6 +8,20 @@ type AuthMode = 'sign-in' | 'sign-up' | 'forgot-password' | 'reset-password';
 
 const passwordRequirements = 'Use at least 8 characters.';
 
+function getDisplayAuthError(message: string): string {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('email not confirmed')) {
+    return 'Sign-in is not enabled for this account yet. Please contact CGP support.';
+  }
+  if (normalized.includes('invalid login credentials')) {
+    return 'Email or password is incorrect.';
+  }
+  if (normalized.includes('failed to fetch') || normalized.includes('networkerror')) {
+    return 'Could not reach CGP sign-in. Check your internet connection and try again.';
+  }
+  return message;
+}
+
 export function AuthScreen() {
   const {
     isPasswordRecovery,
@@ -51,22 +65,22 @@ export function AuthScreen() {
     try {
       if (mode === 'sign-in') {
         const error = await signIn(email.trim(), password);
-        if (error) setErrorMessage(error);
+        if (error) setErrorMessage(getDisplayAuthError(error));
       } else if (mode === 'sign-up') {
         const result = await signUp(email.trim(), password);
         if (result.error) {
-          setErrorMessage(result.error);
+          setErrorMessage(getDisplayAuthError(result.error));
         } else if (result.confirmationRequired) {
-          setSuccessMessage('Check your email for a confirmation link. After confirming, return here to sign in.');
+          setSuccessMessage('Your account request was received, but sign-in is not enabled yet. Please contact CGP support.');
           setMode('sign-in');
         }
       } else if (mode === 'forgot-password') {
         const error = await requestPasswordReset(email.trim());
-        if (error) setErrorMessage(error);
+        if (error) setErrorMessage(getDisplayAuthError(error));
         else setSuccessMessage('If an account exists for this address, a password reset link is on its way.');
       } else {
         const error = await updatePassword(password);
-        if (error) setErrorMessage(error);
+        if (error) setErrorMessage(getDisplayAuthError(error));
         else {
           setPassword('');
           setSuccessMessage('Your password has been updated.');

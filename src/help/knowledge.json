@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "lastVerifiedAppVersion": "1.0.4",
+  "unclearItems": [
+    "The repository has a cgpa_records table migration, but the client also calls save_cgpa_record and resolve_cgpa_record_conflict RPCs that are not defined in the checked-in migrations. Their deployed definitions and conflict behavior need verification before publishing sync instructions as guaranteed behavior.",
+    "A browser-only web build does not expose the Electron vault bridge or Android secure-storage plugin. Whether Vault persistence is supported in that browser build needs a product decision.",
+    "Setup link creation and importing require the shared-setups database proposal to be reviewed, tested, and applied to the deployed Supabase project."
+  ],
+  "sections": [
+    {
+      "id": "setup-sharing",
+      "title": "Share a course setup",
+      "route": "/share-setup",
+      "description": "Create a time-limited link for semester and course-unit structure. Scores, profile information, files, and Vault data are excluded.",
+      "steps": [
+        "Open Share my setup from the navigation.",
+        "Choose whether to include assessment names, weights, and totals, or topic titles.",
+        "Review the preview, choose a link expiry, and create the link.",
+        "Copy the link or scan its QR code. Revoke an active link from My setup links when you no longer want it to work."
+      ],
+      "faqs": [
+        {
+          "id": "setup-share-inclusions",
+          "question": "What is included in a setup link?",
+          "answer": "The link contains semester and course-unit structure, credit units, course target grade points, and only the optional assessment structure or topic titles you selected. It never includes assessment scores, account details, course files, or Vault data.",
+          "routes": ["/share-setup"]
+        },
+        {
+          "id": "setup-share-security",
+          "question": "Who can open a setup link?",
+          "answer": "Anyone who has the link can preview and import its template until it expires or you revoke it. Share it only with people you trust. In the web app, opening and importing the link require an internet connection.",
+          "routes": ["/share-setup"]
+        },
+        {
+          "id": "setup-share-copy",
+          "question": "Why does copying a setup link replace the old one?",
+          "answer": "The app stores only a hash of the secret token. Copying or renewing a link creates a fresh token and invalidates the previously issued URL.",
+          "routes": ["/share-setup"]
+        }
+      ]
+    },
+    {
+      "id": "dashboard",
+      "title": "Dashboard",
+      "route": "/dashboard",
+      "description": "See your current CGPA, target, completed and total credits, active course count, gap to target, and semester trends.",
+      "steps": [
+        "Open Dashboard from the navigation.",
+        "Add semesters, courses, and assessment scores to populate the summary and charts.",
+        "Use Add Your First Semester when the dashboard is empty."
+      ],
+      "faqs": [
+        {
+          "id": "dashboard-no-grades",
+          "question": "Why does my CGPA show --?",
+          "answer": "CGPA is shown after at least one course has a score in a positive-weight assessment. Check that the course has assessments and that at least one score and total are entered.",
+          "routes": ["/dashboard", "/semesters", "/course/:id"]
+        },
+        {
+          "id": "dashboard-refresh",
+          "question": "What does Refresh do?",
+          "answer": "Refresh reloads the application while preserving saved data. It is not the manual sync control.",
+          "routes": ["/dashboard"]
+        }
+      ]
+    },
+    {
+      "id": "semesters-courses",
+      "title": "Semesters & Courses",
+      "route": "/semesters",
+      "description": "Organize courses under academic years and semesters, and maintain a topic outline for each course.",
+      "steps": [
+        "Choose Add Semester, enter an academic year, and choose semester 1, 2, or 3.",
+        "Expand a semester and choose Add Course Unit.",
+        "Enter the course name, optional code, credit units (1 to 6), and target grade point.",
+        "Use the outline control on a course row to add topics one at a time or paste one topic per line.",
+        "Open a course to manage its assessments, scores, and documents."
+      ],
+      "faqs": [
+        {
+          "id": "semester-edit",
+          "question": "How do I edit or remove a semester?",
+          "answer": "Use the edit icon on its semester row to change the academic year or semester number. Delete asks for confirmation and removes the semester and its courses.",
+          "routes": ["/semesters"]
+        },
+        {
+          "id": "course-target",
+          "question": "What is a course target grade point?",
+          "answer": "It is a goal displayed for that course. The current grade comes from assessment scores; changing the target does not change grade calculations.",
+          "routes": ["/semesters", "/course/:id"]
+        },
+        {
+          "id": "topics-outline",
+          "question": "How do I add several course topics?",
+          "answer": "Expand the course outline, paste one topic per line, then choose Add Outline. You can mark topics complete or remove them from the outline.",
+          "routes": ["/semesters"]
+        }
+      ]
+    },
+    {
+      "id": "course-detail",
+      "title": "Course details and assessments",
+      "route": "/course/:id",
+      "description": "Edit a course, add weighted assessments and scores, review the current grade and target forecast, and manage course files.",
+      "steps": [
+        "Open Semesters & Courses, then choose the arrow on a course row.",
+        "Choose Add Assessment and enter its name, weight, and total marks.",
+        "Enter an obtained score in the assessment row; leave it blank while the assessment is ungraded.",
+        "Use the edit or delete controls on an assessment to change its details.",
+        "Upload a PDF, DOC, DOCX, PPT, or PPTX from the course documents area."
+      ],
+      "faqs": [
+        {
+          "id": "assessment-weights",
+          "question": "Should assessment weights add up to 100%?",
+          "answer": "Yes. The course screen warns when the entered weights do not total 100%. The current aggregate is a weighted average over positive assessment weights; use the weights specified by your course.",
+          "routes": ["/course/:id"]
+        },
+        {
+          "id": "assessment-score",
+          "question": "How is a course percentage calculated?",
+          "answer": "For each scored assessment with a positive weight, the app calculates obtained marks divided by total marks, multiplies by its weight, adds those weighted results, and divides by the total positive assessment weight. An unscored assessment contributes weight to the denominator but no earned score.",
+          "routes": ["/course/:id"]
+        },
+        {
+          "id": "target-safety-forecast",
+          "question": "What does Target Safety Forecast mean?",
+          "answer": "It estimates the average percentage needed across remaining positive-weight assessments to reach 80%, which is Grade A / 5.0 GP in the configured scale. It is an estimate based on the entered weights and marks.",
+          "routes": ["/course/:id"]
+        },
+        {
+          "id": "course-files-local",
+          "question": "Are course documents synced to my account?",
+          "answer": "No. Course-document files are kept on the device and are not uploaded with academic records. A file link or file on one device may not be usable on another.",
+          "routes": ["/course/:id"]
+        }
+      ]
+    },
+    {
+      "id": "grading",
+      "title": "Grades and CGPA",
+      "route": "/analytics",
+      "description": "The app uses the configured five-point grade scale and credit-weighted averages for courses that have grades.",
+      "steps": [
+        "Enter assessment totals, weights, and obtained marks on a course detail screen.",
+        "Review the course grade and semester GPA in the course list or Analytics.",
+        "Use the dashboard and Analytics charts to compare graded performance."
+      ],
+      "faqs": [
+        {
+          "id": "grade-scale",
+          "question": "What grade scale does CGP use?",
+          "answer": "The configured thresholds are A: 80% (5.0), B+: 75% (4.5), B: 70% (4.0), C+: 65% (3.5), C: 60% (3.0), D+: 55% (2.5), D: 50% (2.0), and F: below 50% (0.0).",
+          "routes": ["/course/:id", "/analytics"]
+        },
+        {
+          "id": "gpa-formula",
+          "question": "How are semester GPA and CGPA calculated?",
+          "answer": "The app multiplies each graded course's grade point by its credit units, sums those products, and divides by the credit units of graded courses. Semester GPA uses courses in that semester; CGPA uses graded courses across semesters. Courses without a calculated grade are excluded.",
+          "routes": ["/dashboard", "/analytics"]
+        }
+      ]
+    },
+    {
+      "id": "analytics",
+      "title": "Analytics",
+      "route": "/analytics",
+      "description": "Review semester GPA comparisons, overall CGPA, graded-course performance, completed credits, and score distribution.",
+      "steps": [
+        "Open Analytics from the navigation.",
+        "Add and grade courses to populate the charts.",
+        "Use the course breakdown to compare aggregate percentages and grade labels."
+      ],
+      "faqs": [
+        {
+          "id": "analytics-empty",
+          "question": "Why are my Analytics charts empty?",
+          "answer": "Charts need semester or course data, and score charts need scored assessments. Add courses and enter assessment results to populate them.",
+          "routes": ["/analytics"]
+        }
+      ]
+    },
+    {
+      "id": "simulator",
+      "title": "What-If Simulator",
+      "route": "/simulator",
+      "description": "Explore projected outcomes by changing estimates for courses with unfinished assessments. Projections do not edit saved assessment scores.",
+      "steps": [
+        "Add courses and assessments first.",
+        "Open What-If Simulator.",
+        "Adjust the global estimate and choose Apply to All, or adjust an individual unfinished-course slider.",
+        "Choose Reset to clear estimates and return to the default 80% assumption."
+      ],
+      "faqs": [
+        {
+          "id": "simulator-saved",
+          "question": "Does the simulator change my actual scores?",
+          "answer": "No. Simulator estimates are temporary projections and do not write to assessment scores.",
+          "routes": ["/simulator"]
+        },
+        {
+          "id": "simulator-default",
+          "question": "What score does the simulator assume by default?",
+          "answer": "Unfinished courses default to an 80% estimate. The global control applies its chosen estimate to courses without a current aggregate; per-course controls let you vary those estimates.",
+          "routes": ["/simulator"]
+        }
+      ]
+    },
+    {
+      "id": "vault",
+      "title": "Vault",
+      "route": "/vault",
+      "description": "Keep sensitive entries in the separate device vault, including payment cards, government identifiers, travel documents, schedules, app environments, and custom secrets.",
+      "steps": [
+        "Open Vault and create a four-digit PIN when prompted.",
+        "Choose a category, fill its fields, and add an entry.",
+        "Unlock with the PIN when the vault is locked; use the visibility controls carefully.",
+        "Use the copy control for a sensitive value; the app clears the clipboard after 30 seconds."
+      ],
+      "faqs": [
+        {
+          "id": "vault-sync",
+          "question": "Does Vault sync with my CGP account?",
+          "answer": "Vault entries are separate from academic records and are stored locally on the device, not in the CGP account database. Do not expect vault entries to appear on another device.",
+          "routes": ["/vault"]
+        },
+        {
+          "id": "vault-biometric",
+          "question": "Can I unlock Vault with biometrics?",
+          "answer": "The Android app includes biometric-authentication support. A device must have compatible biometrics configured. The current Vault screen also provides its four-digit PIN flow.",
+          "routes": ["/vault"]
+        }
+      ]
+    },
+    {
+      "id": "profile-settings",
+      "title": "Profile and app settings",
+      "route": "/dashboard",
+      "description": "Personalize the sidebar profile with a display name, university, and profile picture.",
+      "steps": [
+        "Open the profile card in the sidebar.",
+        "Choose a picture if desired, enter a name or university, and choose Save Profile."
+      ],
+      "faqs": [
+        {
+          "id": "profile-picture",
+          "question": "How do I change my profile details?",
+          "answer": "Open the profile card in the sidebar, edit your name or university, optionally choose a picture, and save. These are profile settings, not course grades.",
+          "routes": ["/dashboard"]
+        },
+        {
+          "id": "target-setting",
+          "question": "Can I change the overall CGPA target?",
+          "answer": "The inspected screens display a five-point target of 5.0. A separate editable overall target control was not found in the current UI.",
+          "routes": ["/dashboard", "/analytics"]
+        }
+      ]
+    },
+    {
+      "id": "sign-in-sync",
+      "title": "Sign-in and data sync",
+      "route": "/",
+      "description": "Sign in with email and password to connect the account across supported builds. The apps keep account records locally and use Supabase for account sync.",
+      "steps": [
+        "Choose Create an account or enter your email and password on the sign-in screen.",
+        "Use Forgot password? if you need a reset link.",
+        "Use Sign out from the sidebar when finished on a shared device."
+      ],
+      "faqs": [
+        {
+          "id": "offline-sign-in",
+          "question": "Can I sign in without an internet connection?",
+          "answer": "The web app needs an internet connection to load account records from Supabase. A signed-in session may still be present on your device, but academic records are not available offline.",
+          "routes": ["/"]
+        },
+        {
+          "id": "offline-edits",
+          "question": "What happens to edits while I am offline?",
+          "answer": "The web app requires Supabase access to load and save academic records. If your connection drops, reconnect before making changes; do not close or reload the page while an edit is still being saved.",
+          "routes": ["/dashboard", "/semesters", "/course/:id"]
+        },
+        {
+          "id": "account-separation",
+          "question": "Are my records separated from other users?",
+          "answer": "The app stores local account records under the signed-in user ID. The Supabase sync design also scopes records by user and uses row-level security. Never share your sign-in credentials.",
+          "routes": ["/"]
+        },
+        {
+          "id": "sync-requirements",
+          "question": "Why is sync unavailable?",
+          "answer": "Check your internet connection and confirm the app was built with the CGP Supabase configuration. The server must also have the required CGP sync schema and RPCs installed.",
+          "routes": ["/"]
+        }
+      ]
+    },
+    {
+      "id": "platforms",
+      "title": "Web, Windows, and Android",
+      "route": "/help",
+      "description": "CGP is provided as a web app, a Windows desktop app built with Electron, and an Android app built with Capacitor.",
+      "steps": [
+        "Use the web app in its supported browser.",
+        "On Windows, install the CGP setup program; desktop app updates download in the background and install when CGP closes.",
+        "On Android, install the signed APK from the official release source; Android may ask you to confirm an update."
+      ],
+      "faqs": [
+        {
+          "id": "desktop-update",
+          "question": "How do Windows app updates work?",
+          "answer": "The Electron app can download updates in the background and install them when the app closes. Users on older builds without the updater may need to install a setup program manually.",
+          "routes": ["/help"]
+        },
+        {
+          "id": "android-update",
+          "question": "How do Android updates work?",
+          "answer": "The Android app checks for a newer release and opens the APK download. Android requires the user to confirm installation, and an update must use the same signing key as the installed app.",
+          "routes": ["/help"]
+        }
+      ]
+    },
+    {
+      "id": "privacy",
+      "title": "Privacy and data",
+      "route": "/help",
+      "description": "Academic records are stored in the signed-in account in CGP's configured Supabase project. The web app does not cache academic records for offline use. Vault entries and course document files are device-local and are not part of academic-record sync.",
+      "steps": [
+        "Use your own account and sign out on a device you share.",
+        "Keep your password private; CGP does not need you to share it with support.",
+        "Keep a separate copy of documents you need on another device because course files are not synced."
+      ],
+      "faqs": [
+        {
+          "id": "data-storage",
+          "question": "Where is my academic data stored?",
+          "answer": "The web app loads and saves academic records in the signed-in account in CGP's configured Supabase project. Academic records are not cached for offline access. The exact deployed retention and backup settings depend on the CGP project configuration.",
+          "routes": ["/help"]
+        },
+        {
+          "id": "documents-and-vault-privacy",
+          "question": "Are files and Vault data included in academic sync?",
+          "answer": "No. Course document files and Vault data are separate from synced academic records and remain on the device.",
+          "routes": ["/help", "/course/:id", "/vault"]
+        },
+        {
+          "id": "copyright-rights",
+          "question": "Who owns the records I enter?",
+          "answer": "CGP's Help text states that user-entered academic information belongs to the person who provides it. App code, interface, and branding are separate from user-entered records.",
+          "routes": ["/help"]
+        }
+      ]
+    }
+  ]
+}

@@ -5,9 +5,9 @@ import { TARGET_CGPA, uid } from './types';
 import { supabase } from './supabase';
 import { useAuth } from '@/contexts/useAuth';
 
-type RecordType = 'semester' | 'course' | 'settings';
+export type RecordType = 'semester' | 'course' | 'settings';
 
-interface CloudRecord {
+export interface CloudRecord {
   id: string;
   record_type: RecordType;
   payload: Semester | CourseUnit | AppData['settings'];
@@ -104,7 +104,7 @@ function appDataFromCloudRecords(records: CloudRecord[]): AppData {
           ...course,
           assessments: course.assessments || [],
           topics: course.topics || [],
-          documents: [],
+          documents: course.documents || [],
         };
       }),
     settings: (active.find((record) => record.record_type === 'settings')?.payload as AppData['settings'] | undefined)
@@ -124,6 +124,17 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'An unexpected Supabase error occurred.';
 }
 
+function isNetworkError(error: unknown) {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return true;
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; message?: unknown; code?: unknown };
+  const message = typeof candidate.message === 'string' ? candidate.message : '';
+  const code = typeof candidate.code === 'string' ? candidate.code : '';
+  return (candidate.name === 'TypeError' && /fetch|network|load failed/i.test(message))
+    || /failed to fetch|fetch failed|network request failed|network error|internet disconnected|connection (?:was )?(?:lost|closed|reset)|timed out|econnreset|enotfound/i.test(message)
+    || ['ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'ERR_INTERNET_DISCONNECTED'].includes(code);
+}
+
 function useAppDataState() {
   const { user } = useAuth();
   const userId = user?.id;
@@ -131,20 +142,29 @@ function useAppDataState() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [syncError, setSyncError] = useState('');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [pendingConflict, setPendingConflict] = useState<OpenConflict | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [syncAttempt, setSyncAttempt] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const ready = useRef(false);
+  const initializedUser = useRef<string | undefined>();
+  const cloudInitialized = useRef(false);
   const remoteRecords = useRef(new Map<string, CloudRecord>());
   const syncInProgress = useRef(false);
   const syncQueued = useRef(false);
 
   useEffect(() => {
-    ready.current = false;
-    remoteRecords.current = new Map();
-    setData(emptyData);
-    setLoading(true);
+    const userChanged = initializedUser.current !== userId;
+    if (userChanged) {
+      initializedUser.current = userId;
+      ready.current = false;
+      cloudInitialized.current = false;
+      remoteRecords.current = new Map();
+      setData(emptyData);
+      setLastSyncedAt(null);
+      setLoading(Boolean(userId));
+    }
     setLoadError('');
     setSyncError('');
     setPendingConflict(null);
@@ -157,14 +177,22 @@ function useAppDataState() {
     }
 
     let active = true;
+    ready.current = false;
+    cloudInitialized.current = false;
+    setLoading(true);
+    if (!navigator.onLine) {
+      setLoadError('Connect to the internet to load your CGP account from Supabase.');
+      setLoading(false);
+      return () => { active = false; };
+    }
 
     void (async () => {
       const { data: rows, error } = await client
         .from('cgpa_records')
         .select('id, record_type, payload, is_deleted, revision')
         .eq('user_id', userId);
-      if (!active) return;
       if (error) throw error;
+
       const records: CloudRecord[] = [];
       for (const row of rows || []) {
         if (!isCloudRecord(row)) throw new Error('Supabase returned a malformed CGP record.');
@@ -178,56 +206,63 @@ function useAppDataState() {
         .eq('status', 'open')
         .order('created_at', { ascending: true })
         .limit(1);
-      if (!active) return;
       if (conflictsError) throw conflictsError;
+      if (!active) return;
 
       remoteRecords.current = new Map(records.map((record) => [record.id, record]));
+      cloudInitialized.current = true;
+      ready.current = true;
       setData(appDataFromCloudRecords(records));
       setPendingConflict(conflicts?.[0] ?? null);
+      setLastSyncedAt(new Date().toISOString());
       if (conflicts?.length) {
         setSyncError(`A saved edit conflicts with a newer version of ${conflicts[0].record_id}. Choose which version to keep.`);
       }
-      ready.current = true;
       setLoading(false);
     })().catch((error: unknown) => {
       if (!active) return;
-      console.error('Unable to load CGP data from Supabase.', error);
-      setLoadError(`CGP could not load your Supabase records. Confirm the CGP database migrations are applied, then retry. ${errorMessage(error)}`);
+      if (isNetworkError(error)) {
+        setLoadError('CGP could not reach Supabase. Connect to the internet and retry.');
+      } else {
+        console.error('Unable to load CGP data from Supabase.', error);
+        setLoadError(`CGP could not load your Supabase records. Confirm the CGP database migrations are applied, then retry. ${errorMessage(error)}`);
+      }
       setLoading(false);
     });
 
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [userId, loadAttempt]);
 
   useEffect(() => {
     const client = supabase;
-    if (!ready.current || !userId || !client || pendingConflict) return;
+    if (!ready.current || !cloudInitialized.current || !userId || !client || pendingConflict) return;
 
     const timer = window.setTimeout(() => {
+      if (!navigator.onLine) return;
       if (syncInProgress.current) {
         syncQueued.current = true;
         return;
       }
-
-      const currentRecords = remoteRecords.current;
-      const desiredRecords = new Map(toCloudRecords(data).map((record) => [record.id, record]));
-      currentRecords.forEach((record, id) => {
-        if (!record.is_deleted && !desiredRecords.has(id)) {
-          desiredRecords.set(id, { ...record, is_deleted: true, revision: 0 });
-        }
-      });
-
-      const changedRecords = [...desiredRecords.values()].filter((record) => {
-        const previous = currentRecords.get(record.id);
-        return !previous || cloudRecordContent(previous) !== cloudRecordContent(record);
-      });
-      if (!changedRecords.length) return;
 
       syncInProgress.current = true;
       setSyncing(true);
       void (async () => {
         let conflictFound = false;
         try {
+          const currentRecords = remoteRecords.current;
+          const desiredRecords = new Map(toCloudRecords(data).map((record) => [record.id, record]));
+          currentRecords.forEach((record, id) => {
+            if (!record.is_deleted && !desiredRecords.has(id)) {
+              desiredRecords.set(id, { ...record, is_deleted: true, revision: 0 });
+            }
+          });
+          const changedRecords = [...desiredRecords.values()].filter((record) => {
+            const previous = currentRecords.get(record.id);
+            return !previous || cloudRecordContent(previous) !== cloudRecordContent(record);
+          });
+
           for (const record of changedRecords) {
             const expectedRevision = currentRecords.get(record.id)?.revision ?? 0;
             const { data: result, error } = await client.rpc('save_cgpa_record', {
@@ -253,10 +288,17 @@ function useAppDataState() {
 
             currentRecords.set(record.id, { ...record, revision: saveResult.revision });
           }
-          if (!conflictFound) setSyncError('');
+          if (!conflictFound) {
+            setSyncError('');
+            if (changedRecords.length) setLastSyncedAt(new Date().toISOString());
+          }
         } catch (error) {
-          console.error('Unable to save CGP data to Supabase.', error);
-          setSyncError(`Your change could not be saved to Supabase. Check your connection and retry. ${errorMessage(error)}`);
+          if (isNetworkError(error)) {
+            setSyncError('');
+          } else {
+            console.error('Unable to save CGP data to Supabase.', error);
+            setSyncError(`Your change could not be saved to Supabase. ${errorMessage(error)}`);
+          }
         } finally {
           syncInProgress.current = false;
           setSyncing(false);
@@ -270,6 +312,12 @@ function useAppDataState() {
 
     return () => window.clearTimeout(timer);
   }, [data, pendingConflict, userId, syncAttempt]);
+
+  useEffect(() => {
+    const retryWhenOnline = () => setSyncAttempt((attempt) => attempt + 1);
+    window.addEventListener('online', retryWhenOnline);
+    return () => window.removeEventListener('online', retryWhenOnline);
+  }, []);
 
   const retryLoad = useCallback(() => setLoadAttempt((attempt) => attempt + 1), []);
   const retrySync = useCallback(() => {
@@ -332,6 +380,7 @@ function useAppDataState() {
     remoteRecords.current = new Map(records.map((record) => [record.id, record]));
     setData(appDataFromCloudRecords(records));
     setPendingConflict(conflicts?.[0] ?? null);
+    setLastSyncedAt(new Date().toISOString());
     setSyncError(conflicts?.length
       ? `A saved edit conflicts with a newer version of ${conflicts[0].record_id}. Choose which version to keep.`
       : '');
@@ -530,6 +579,77 @@ function useAppDataState() {
     setData((d) => ({ ...d, settings: { targetCGPA: target } }));
   }, []);
 
+  const importSetupRecords = useCallback(async (
+    _setupId: string,
+    shareToken: string,
+    records: CloudRecord[],
+  ) => {
+    if (!supabase || !userId || !navigator.onLine) {
+      throw new Error('Connect to the internet to import this setup into your CGP account.');
+    }
+
+    const { data: alreadyImported, error: importCheckError } = await supabase.rpc(
+      'check_shared_setup_import',
+      { p_token: shareToken },
+    );
+    if (importCheckError) throw importCheckError;
+    if (alreadyImported === true) return false;
+
+    for (const record of records) {
+      const current = remoteRecords.current.get(record.id);
+      if (current && cloudRecordContent(current) === cloudRecordContent(record)) continue;
+      const { data: result, error } = await supabase.rpc('save_cgpa_record', {
+        p_id: record.id,
+        p_record_type: record.record_type,
+        p_payload: record.record_type === 'course'
+          ? { ...record.payload as CourseUnit, documents: [] }
+          : record.payload,
+        p_is_deleted: record.is_deleted,
+        p_expected_revision: current?.revision ?? 0,
+      });
+      if (error) throw error;
+      if (!isSaveResult(result)) throw new Error('Supabase returned an invalid setup-import save response.');
+      if (result.status === 'conflict') {
+        const conflict = { id: result.conflict_id ?? '', record_id: record.id };
+        if (conflict.id) setPendingConflict(conflict);
+        setSyncError(`A newer cloud version of ${record.id} needs conflict resolution before import can continue.`);
+        throw new Error('A cloud record changed while the setup was being imported. Resolve the conflict and retry.');
+      }
+      remoteRecords.current.set(record.id, { ...record, revision: result.revision });
+    }
+
+    const { data: importStatus, error: markImportError } = await supabase.rpc(
+      'record_shared_setup_import',
+      { p_token: shareToken },
+    );
+    if (markImportError) throw markImportError;
+    if (importStatus !== 'recorded' && importStatus !== 'already_imported') {
+      throw new Error('Supabase could not record this setup import. Check that the link is still active.');
+    }
+    setLastSyncedAt(new Date().toISOString());
+
+    setData((current) => {
+      let semesters = [...current.semesters];
+      let courses = [...current.courses];
+      for (const record of records) {
+        if (record.is_deleted) continue;
+        if (record.record_type === 'semester') {
+          const semester = record.payload as Semester;
+          semesters = [...semesters.filter((item) => item.id !== semester.id), semester];
+        } else if (record.record_type === 'course') {
+          const course = record.payload as CourseUnit;
+          const existing = courses.find((item) => item.id === course.id);
+          courses = [...courses.filter((item) => item.id !== course.id), {
+            ...course,
+            documents: existing?.documents ?? [],
+          }];
+        }
+      }
+      return { ...current, semesters, courses };
+    });
+    return true;
+  }, [userId]);
+
   const loadSampleData = useCallback(() => {
     const sem1Id = uid();
     const sem2Id = uid();
@@ -614,12 +734,14 @@ function useAppDataState() {
     updateAssessment,
     deleteAssessment,
     setTargetCGPA,
+    importSetupRecords,
     loadSampleData,
     clearAllData,
     loading,
     loadError,
     syncError,
     syncing,
+    lastSyncedAt,
     pendingConflict,
     retryLoad,
     retrySync,

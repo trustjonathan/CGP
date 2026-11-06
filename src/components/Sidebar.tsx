@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   LogOut,
   Download,
+  Share2,
+  RefreshCw,
 } from 'lucide-react';
 import { useAppData } from '@/lib/useAppData';
 import { useAuth } from '@/contexts/useAuth';
@@ -25,6 +27,9 @@ const navItems = [
   { to: '/analytics', label: 'Analytics', icon: TrendingUp },
   { to: '/simulator', label: 'What-If Simulator', icon: SlidersHorizontal },
   { to: '/vault', label: 'Vault', icon: ShieldCheck },
+  { to: '/share-setup', label: 'Share my setup', icon: Share2 },
+  { to: '/import', label: 'Import a setup', icon: Download },
+  { to: '/settings/sync', label: 'Sync & storage', icon: RefreshCw },
   { to: '/help', label: 'Help & Privacy', icon: CircleHelp },
   { to: '/releases', label: 'Desktop & mobile apps', icon: Download },
 ];

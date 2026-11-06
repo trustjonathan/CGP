@@ -372,19 +372,18 @@ function CourseRow({
 
   return (
     <div className="border-b border-ink-50 last:border-b-0">
-      <div className="flex items-center gap-3 px-4 py-3 group">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 group">
                   <div className="w-9 h-9 rounded-lg bg-ink-100 text-ink-500 flex items-center justify-center flex-shrink-0">
                     <BookOpen className="w-4 h-4" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-ink-900 text-sm truncate">{course.name}</span>
-                      <span className="text-xs text-ink-400 font-mono">{course.code}</span>
-                    </div>
-                    <div className="text-xs text-ink-500 mt-0.5">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                    <span className="break-words font-medium text-ink-900 text-sm sm:min-w-0 sm:truncate">{course.name}</span>
+                    {course.code && <span className="shrink-0 text-xs text-ink-400 font-mono">{course.code}</span>}
+                    <div className="text-xs text-ink-500">
                       {course.creditUnits} CU · {course.assessments.length} assessment{course.assessments.length !== 1 ? 's' : ''}
                     </div>
                   </div>
+                  <div className="ml-auto flex items-center gap-1 max-sm:basis-full max-sm:justify-end sm:ml-0">
                   <Link
                     to={`/course/${course.id}`}
                     className="p-2 rounded-lg text-ink-400 hover:text-primary-600 hover:bg-primary-50 transition-colors"
@@ -406,6 +405,7 @@ function CourseRow({
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
+                  </div>
       </div>
       {open && (
         <div className="px-4 pb-4 pl-16 space-y-3 animate-fade-in">

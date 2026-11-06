@@ -13,3 +13,9 @@ interface Window {
 		copyToClipboard: (text: string, autoClearSec?: number) => Promise<boolean>;
 	};
 }
+
+interface ImportMetaEnv {
+  readonly VITE_APP_VERSION: string;
+  readonly VITE_CGP_WEB_URL?: string;
+  readonly VITE_CGP_AUTH_REDIRECT_URL?: string;
+}

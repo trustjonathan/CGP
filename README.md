@@ -29,9 +29,10 @@ Run migrations against a local Supabase stack before applying them to a hosted p
 ## Supabase Auth setup
 
 - Enable email/password sign-up in the Supabase project's Auth providers.
+- Disable **Confirm email** in the Email provider settings if accounts must sign in without email verification. With confirmation enabled, Supabase does not create an authenticated session for a new unconfirmed account.
 - Set the project's site URL to the deployed CGP origin.
 - Add the local origin (for example, `http://localhost:5173`) and deployed CGP origin to the Auth redirect URL allowlist. Password-reset emails return to the site root.
 - Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the local `.env` and deployment environment. The browser uses only the anon/publishable key; never expose a service-role key.
 - Apply the database migrations before using the signed-in workspace. The web app reads and writes CGPA records through Supabase and does not fall back to a browser database.
 
-New accounts do not automatically import data from existing APK or EXE installations. Those clients need a later authenticated migration/update so users explicitly sign in and upload their own local records.
+Native clients present an explicit import-or-keep-separate choice after sign-in; existing on-device data is retained.

@@ -12,6 +12,13 @@ import { useAuth } from '@/contexts/useAuth';
 import { AuthScreen } from '@/components/AuthScreen';
 import { AppDataProvider, useAppData } from '@/lib/useAppData';
 import { ReleasePage } from '@/pages/ReleasePage';
+import { SyncStatusToast } from '@/components/SyncStatusToast';
+import { HelpAssistant } from '@/components/HelpAssistant';
+import { ShareSetupPage } from '@/pages/ShareSetupPage';
+import { ImportSetupPage } from '@/pages/ImportSetupPage';
+import { SyncSettingsPage } from '@/pages/SyncSettingsPage';
+import { WifiOff } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 function App() {
   return (
@@ -75,10 +82,11 @@ function CloudWorkspace() {
   if (loadError) {
     return (
       <main className="min-h-screen bg-ink-50 flex items-center justify-center px-4">
-        <section className="w-full max-w-lg rounded-2xl border border-error-200 bg-white p-7 shadow-sm">
+        <section className="relative w-full max-w-lg rounded-2xl border border-error-200 bg-white p-7 shadow-sm">
           <h1 className="font-display text-xl font-bold text-ink-900">Your cloud workspace isn’t ready</h1>
           <p role="alert" className="mt-3 text-sm leading-6 text-error-700">{loadError}</p>
           <button type="button" className="btn-primary mt-5" onClick={retryLoad}>Retry</button>
+          <HelpAssistant />
         </section>
       </main>
     );
@@ -88,30 +96,15 @@ function CloudWorkspace() {
     <div className="flex min-h-screen bg-ink-50">
       <Sidebar />
       <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6 pt-20 lg:pt-6 max-w-6xl mx-auto w-full">
-        {(syncing || syncError) && (
-          <div
-            role={syncError ? 'alert' : 'status'}
-            className={`mb-4 flex items-center justify-between gap-4 rounded-xl border px-4 py-3 text-sm ${
-              syncError
-                ? 'border-error-200 bg-error-50 text-error-800'
-                : 'border-primary-200 bg-primary-50 text-primary-800'
-            }`}
-          >
-            <span>{syncError || 'Saving your changes to Supabase…'}</span>
-            {pendingConflict ? (
-              <span className="flex shrink-0 flex-wrap gap-2">
-                <button className="rounded-lg bg-white px-3 py-1.5 font-semibold text-error-800 shadow-sm" onClick={() => void resolveConflict('keep_local')}>
-                  Keep this version
-                </button>
-                <button className="rounded-lg bg-white px-3 py-1.5 font-semibold text-error-800 shadow-sm" onClick={() => void resolveConflict('keep_server')}>
-                  Keep cloud version
-                </button>
-              </span>
-            ) : syncError ? (
-              <button className="shrink-0 font-semibold underline" onClick={retrySync}>Retry</button>
-            ) : null}
-          </div>
-        )}
+        <SyncStatusToast
+          syncError={syncError}
+          syncing={syncing}
+          retrySync={retrySync}
+          pendingConflict={Boolean(pendingConflict)}
+          resolveConflict={resolveConflict}
+        />
+        <OfflineStatusBanner />
+        <HelpAssistant />
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
@@ -120,10 +113,36 @@ function CloudWorkspace() {
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/simulator" element={<SimulatorPage />} />
           <Route path="/vault" element={<MultiVaultManager />} />
+          <Route path="/share-setup" element={<ShareSetupPage />} />
+          <Route path="/import/:token" element={<ImportSetupPage />} />
+          <Route path="/import" element={<ImportSetupPage />} />
+          <Route path="/settings/sync" element={<SyncSettingsPage />} />
           <Route path="/help" element={<HelpPage />} />
         </Routes>
       </main>
     </div>
+  );
+}
+
+function OfflineStatusBanner() {
+  const [online, setOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const updateConnectivity = () => setOnline(navigator.onLine);
+    window.addEventListener('online', updateConnectivity);
+    window.addEventListener('offline', updateConnectivity);
+    return () => {
+      window.removeEventListener('online', updateConnectivity);
+      window.removeEventListener('offline', updateConnectivity);
+    };
+  }, []);
+
+  if (online) return null;
+  return (
+    <p role="status" className="mb-4 flex items-start gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm leading-6 text-primary-800">
+      <WifiOff className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
+      <span>You’re offline. The web app needs Supabase access to load and save records; reconnect before editing or refreshing this page.</span>
+    </p>
   );
 }
 
