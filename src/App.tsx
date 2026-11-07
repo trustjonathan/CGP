@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { SemestersPage } from '@/pages/SemestersPage';
@@ -20,6 +20,7 @@ import { SyncSettingsPage } from '@/pages/SyncSettingsPage';
 import { WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PublicImportPage } from '@/pages/PublicImportPage';
+import { OnboardingPage } from '@/pages/OnboardingPage';
 
 function App() {
   return (
@@ -82,6 +83,7 @@ function AuthenticatedApp() {
 
 function CloudWorkspace() {
   const {
+    data,
     loading,
     loadError,
     syncError,
@@ -91,6 +93,7 @@ function CloudWorkspace() {
     retrySync,
     resolveConflict,
   } = useAppData();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -114,6 +117,11 @@ function CloudWorkspace() {
         </section>
       </main>
     );
+  }
+
+  if (location.pathname === '/onboarding'
+    || (!data.semesters.length && data.settings.onboardingCompleted !== true)) {
+    return <main className="min-h-screen bg-ink-50 px-3 py-5 sm:px-6 sm:py-8"><OnboardingPage /></main>;
   }
 
   return (
@@ -141,6 +149,7 @@ function CloudWorkspace() {
           <Route path="/import/:token" element={<ImportSetupPage />} />
           <Route path="/import" element={<ImportSetupPage />} />
           <Route path="/settings/sync" element={<SyncSettingsPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/help" element={<HelpPage />} />
         </Routes>
       </main>

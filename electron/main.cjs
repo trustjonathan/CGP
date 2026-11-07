@@ -30,6 +30,10 @@ function multiVaultFilePath() {
   return path.join(app.getPath('userData'), 'secure_multi_vault.enc');
 }
 
+function vaultBackupSecretFilePath() {
+  return path.join(app.getPath('userData'), 'vault_backup_secret.enc');
+}
+
 function normalizeMultiVaultState(value) {
   const payload = value && typeof value === 'object' ? value : {};
   const source = 'vault' in payload ? payload.vault : payload;
@@ -117,6 +121,59 @@ ipcMain.handle('vault:load-multi', async () => {
   } catch {
     return defaultMultiVaultState();
   }
+});
+
+async function loadVaultBackupSecrets() {
+  const target = vaultBackupSecretFilePath();
+  if (!fs.existsSync(target)) return {};
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure storage is unavailable on this device.');
+  }
+  const encrypted = await fsp.readFile(target);
+  const stored = JSON.parse(safeStorage.decryptString(encrypted));
+  return stored && stored.version === 1 && stored.secrets && typeof stored.secrets === 'object'
+    ? stored.secrets
+    : {};
+}
+
+async function saveVaultBackupSecrets(secrets) {
+  const target = vaultBackupSecretFilePath();
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure storage is unavailable on this device.');
+  }
+  await fsp.mkdir(path.dirname(target), { recursive: true });
+  await fsp.writeFile(target, safeStorage.encryptString(JSON.stringify({ version: 1, secrets })));
+}
+
+ipcMain.handle('vault:save-backup-secret', async (_event, userId, secret) => {
+  if (typeof userId !== 'string' || !userId || userId.length > 128) {
+    throw new Error('The Vault backup account is invalid.');
+  }
+  if (typeof secret !== 'string' || secret.trim().length < 16 || secret.length > 1024) {
+    throw new Error('The Vault recovery passphrase is invalid.');
+  }
+  const secrets = await loadVaultBackupSecrets();
+  secrets[userId] = secret;
+  await saveVaultBackupSecrets(secrets);
+  return true;
+});
+
+ipcMain.handle('vault:load-backup-secret', async (_event, userId) => {
+  if (typeof userId !== 'string' || !userId || userId.length > 128) return null;
+  const secrets = await loadVaultBackupSecrets();
+  return typeof secrets[userId] === 'string' ? secrets[userId] : null;
+});
+
+ipcMain.handle('vault:clear-backup-secret', async (_event, userId) => {
+  if (typeof userId !== 'string' || !userId || userId.length > 128) return false;
+  const secrets = await loadVaultBackupSecrets();
+  delete secrets[userId];
+  if (Object.keys(secrets).length === 0) {
+    await fsp.rm(vaultBackupSecretFilePath(), { force: true });
+  } else {
+    await saveVaultBackupSecrets(secrets);
+  }
+  return true;
 });
 
 ipcMain.handle('vault:copy-sensitive', async (_event, text, autoClearSeconds = 30) => {

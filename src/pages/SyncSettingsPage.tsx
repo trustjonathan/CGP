@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Cloud, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Bell, CheckCircle2, Cloud, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { useAppData } from '@/lib/useAppData';
+import { useAuth } from '@/contexts/useAuth';
+import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
+import type { OnboardingLocalState, SetupReminderState } from '@/lib/onboarding';
+
+const defaultReminder: SetupReminderState = { lastShownAt: null, snoozedUntil: null, dismissals: 0, notificationsEnabled: false };
 
 function formatSyncTime(value: string | null) {
   if (!value) return 'Not synced in this session';
@@ -12,8 +18,13 @@ function formatSyncTime(value: string | null) {
 
 export function SyncSettingsPage() {
   const { lastSyncedAt, syncing, retrySync } = useAppData();
+  const { user } = useAuth();
   const [online, setOnline] = useState(navigator.onLine);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationBusy, setNotificationBusy] = useState(false);
   const version = import.meta.env.VITE_APP_VERSION || '1.0.0';
+  const desktopNotificationsAvailable = Boolean(window.desktopApp && 'Notification' in window);
 
   useEffect(() => {
     const updateConnectivity = () => setOnline(navigator.onLine);
@@ -24,6 +35,48 @@ export function SyncSettingsPage() {
       window.removeEventListener('offline', updateConnectivity);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) return () => { active = false; };
+    void readOnboardingState(user.id).then((state) => {
+      if (active) setNotificationsEnabled(state?.reminder.notificationsEnabled === true);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      console.error('Unable to load CGP notification preferences.', error);
+      setNotificationMessage('Notification preferences could not be loaded from this device.');
+    });
+    return () => { active = false; };
+  }, [user?.id]);
+
+  const setNotificationPreference = async (enabled: boolean) => {
+    if (!user?.id || !desktopNotificationsAvailable || !('Notification' in window)) return;
+    setNotificationBusy(true);
+    setNotificationMessage('');
+    try {
+      if (enabled) {
+        const permission = await window.Notification.requestPermission();
+        if (permission !== 'granted') {
+          setNotificationMessage('Notifications were not enabled. You can continue using CGP without them.');
+          return;
+        }
+      }
+      const state = await readOnboardingState(user.id);
+      const nextState: Omit<OnboardingLocalState, 'user_id' | 'updated_at'> = {
+        draft: state?.draft ?? null,
+        metrics: state?.metrics ?? { stepReached: {}, stepSkipped: {}, completed: 0, timeToFirstCgpaMs: null },
+        reminder: { ...(state?.reminder ?? defaultReminder), notificationsEnabled: enabled },
+      };
+      await saveOnboardingState(user.id, nextState);
+      setNotificationsEnabled(enabled);
+      setNotificationMessage(enabled ? 'Local notifications are enabled on this device.' : 'Local notifications are disabled.');
+    } catch (error) {
+      console.error('Unable to update CGP local notification preferences.', error);
+      setNotificationMessage('Notification preference could not be saved on this device.');
+    } finally {
+      setNotificationBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -41,7 +94,7 @@ export function SyncSettingsPage() {
           <div className="min-w-0 flex-1">
             <h2 id="sync-status-title" className="font-display text-xl font-bold text-ink-900">Account sync</h2>
             <p className="mt-1 text-sm leading-6 text-ink-600">
-              Academic records are authoritative in your signed-in Supabase account. The web app does not keep an offline-first local copy.
+              Supabase remains authoritative. CGP also keeps an account-scoped local copy and queues edits so they can be saved silently when a connection returns.
             </p>
           </div>
         </div>
@@ -51,7 +104,7 @@ export function SyncSettingsPage() {
             <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">Connection</dt>
             <dd className={`mt-2 flex items-center gap-2 text-sm font-semibold ${online ? 'text-success-700' : 'text-error-700'}`}>
               {online ? <Wifi className="h-4 w-4" aria-hidden="true" /> : <WifiOff className="h-4 w-4" aria-hidden="true" />}
-              {online ? 'Online' : 'Offline — connect to load or save records'}
+              {online ? 'Online' : 'Offline — saved local changes will sync when reconnected'}
             </dd>
           </div>
           <div className="rounded-xl border border-ink-200 p-4">
@@ -74,6 +127,29 @@ export function SyncSettingsPage() {
         <p className="mt-2 text-sm text-ink-600">
           CGP Web <span className="font-semibold text-ink-900">{version}</span>
         </p>
+      </section>
+
+      <section className="card space-y-4 p-5" aria-labelledby="setup-preferences-title">
+        <div>
+          <h2 id="setup-preferences-title" className="font-display text-lg font-bold text-ink-900">Academic setup</h2>
+          <p className="mt-1 text-sm leading-6 text-ink-600">Review or update your university, course units, target, and results.</p>
+        </div>
+        <Link to="/onboarding?again=1" className="btn-secondary inline-flex items-center gap-2">Run setup again</Link>
+        {desktopNotificationsAvailable && (
+          <div className="border-t border-ink-100 pt-4">
+            <div className="flex items-start gap-3">
+              <Bell className="mt-0.5 h-5 w-5 text-primary-600" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-ink-900">Local setup reminders</h3>
+                <p className="mt-1 text-sm leading-6 text-ink-600">Optional Windows notifications. CGP asks for notification permission only after you choose to enable them here.</p>
+                <button type="button" className="btn-secondary mt-3" disabled={notificationBusy} onClick={() => void setNotificationPreference(!notificationsEnabled)}>
+                  {notificationBusy ? 'Saving…' : notificationsEnabled ? 'Disable notifications' : 'Enable notifications'}
+                </button>
+                {notificationMessage && <p role="status" className="mt-2 text-sm text-ink-600">{notificationMessage}</p>}
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );

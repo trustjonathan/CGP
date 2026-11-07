@@ -43,8 +43,15 @@ export interface Semester {
 
 export interface AppSettings {
   targetCGPA: number;
+  targetSet?: boolean;
   profileName?: string;
   university?: string;
+  programme?: string;
+  yearOfStudy?: number;
+  currentSemester?: number;
+  academicYear?: string;
+  onboardingCompleted?: boolean;
+  onboardingDraft?: unknown;
   profilePicture?: string;
 }
 

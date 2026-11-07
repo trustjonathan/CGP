@@ -4,6 +4,13 @@ import type { AppData, Semester, CourseUnit, Assessment, CourseDocument, CourseT
 import { TARGET_CGPA, uid } from './types';
 import { supabase } from './supabase';
 import { useAuth } from '@/contexts/useAuth';
+import {
+  loadAccountData,
+  markAccountRecordSynced,
+  mergeCloudSnapshot,
+  persistAccountData,
+  readAccountRecords,
+} from './localSync';
 
 export type RecordType = 'semester' | 'course' | 'settings';
 
@@ -155,6 +162,17 @@ function useAppDataState() {
   const syncQueued = useRef(false);
 
   useEffect(() => {
+    if (!userId || !ready.current) return;
+    let active = true;
+    void persistAccountData(userId, data).catch((error: unknown) => {
+      if (!active) return;
+      console.error('Unable to persist the local CGP account cache.', error);
+      setSyncError('Your changes could not be saved to this device. Check available storage and try again.');
+    });
+    return () => { active = false; };
+  }, [data, userId]);
+
+  useEffect(() => {
     const userChanged = initializedUser.current !== userId;
     if (userChanged) {
       initializedUser.current = userId;
@@ -180,13 +198,23 @@ function useAppDataState() {
     ready.current = false;
     cloudInitialized.current = false;
     setLoading(true);
-    if (!navigator.onLine) {
-      setLoadError('Connect to the internet to load your CGP account from Supabase.');
-      setLoading(false);
-      return () => { active = false; };
-    }
-
     void (async () => {
+      const cachedData = await loadAccountData(userId);
+      if (!active) return;
+      if (cachedData) {
+        setData(cachedData);
+        ready.current = true;
+        setLoading(false);
+      }
+
+      if (!navigator.onLine) {
+        ready.current = true;
+        setData((current) => cachedData ?? current);
+        setLoadError('');
+        setLoading(false);
+        return;
+      }
+
       const { data: rows, error } = await client
         .from('cgpa_records')
         .select('id, record_type, payload, is_deleted, revision')
@@ -209,12 +237,16 @@ function useAppDataState() {
       if (conflictsError) throw conflictsError;
       if (!active) return;
 
+      await mergeCloudSnapshot(userId, records);
+      const mergedData = await loadAccountData(userId);
+      if (!active) return;
       remoteRecords.current = new Map(records.map((record) => [record.id, record]));
       cloudInitialized.current = true;
       ready.current = true;
-      setData(appDataFromCloudRecords(records));
+      setData(mergedData ?? appDataFromCloudRecords(records));
       setPendingConflict(conflicts?.[0] ?? null);
       setLastSyncedAt(new Date().toISOString());
+      setLoadError('');
       if (conflicts?.length) {
         setSyncError(`A saved edit conflicts with a newer version of ${conflicts[0].record_id}. Choose which version to keep.`);
       }
@@ -222,10 +254,16 @@ function useAppDataState() {
     })().catch((error: unknown) => {
       if (!active) return;
       if (isNetworkError(error)) {
-        setLoadError('CGP could not reach Supabase. Connect to the internet and retry.');
+        ready.current = true;
+        setLoadError('');
+        setLoading(false);
       } else {
         console.error('Unable to load CGP data from Supabase.', error);
-        setLoadError(`CGP could not load your Supabase records. Confirm the CGP database migrations are applied, then retry. ${errorMessage(error)}`);
+        if (ready.current) {
+          setSyncError(`CGP is showing the saved local copy. Cloud refresh failed: ${errorMessage(error)}`);
+        } else {
+          setLoadError(`CGP could not load your Supabase records. Confirm the CGP database migrations are applied, then retry. ${errorMessage(error)}`);
+        }
       }
       setLoading(false);
     });
@@ -262,6 +300,7 @@ function useAppDataState() {
             const previous = currentRecords.get(record.id);
             return !previous || cloudRecordContent(previous) !== cloudRecordContent(record);
           });
+          const savedRevisions = new Map<string, number>();
 
           for (const record of changedRecords) {
             const expectedRevision = currentRecords.get(record.id)?.revision ?? 0;
@@ -287,6 +326,16 @@ function useAppDataState() {
             }
 
             currentRecords.set(record.id, { ...record, revision: saveResult.revision });
+            savedRevisions.set(record.id, saveResult.revision);
+          }
+          if (savedRevisions.size) {
+            const localRecords = await readAccountRecords(userId);
+            for (const [recordId, revision] of savedRevisions) {
+              const localRecord = localRecords.find((record) => record.id === recordId);
+              if (localRecord) {
+                await markAccountRecordSynced(userId, recordId, localRecord.updated_at, revision);
+              }
+            }
           }
           if (!conflictFound) {
             setSyncError('');
@@ -314,7 +363,10 @@ function useAppDataState() {
   }, [data, pendingConflict, userId, syncAttempt]);
 
   useEffect(() => {
-    const retryWhenOnline = () => setSyncAttempt((attempt) => attempt + 1);
+    const retryWhenOnline = () => {
+      setLoadAttempt((attempt) => attempt + 1);
+      setSyncAttempt((attempt) => attempt + 1);
+    };
     window.addEventListener('online', retryWhenOnline);
     return () => window.removeEventListener('online', retryWhenOnline);
   }, []);
@@ -531,6 +583,7 @@ function useAppDataState() {
             : c
         ),
       }));
+      return assessment.id;
     },
     []
   );
@@ -576,7 +629,7 @@ function useAppDataState() {
   );
 
   const setTargetCGPA = useCallback((target: number) => {
-    setData((d) => ({ ...d, settings: { targetCGPA: target } }));
+    setData((d) => ({ ...d, settings: { ...d.settings, targetCGPA: target, targetSet: true } }));
   }, []);
 
   const importSetupRecords = useCallback(async (

@@ -1,5 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  CartesianGrid,
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import {
   ArrowLeft,
   ArrowRight,
@@ -20,7 +32,6 @@ import { ImportSetupPage } from '@/pages/ImportSetupPage';
 import { useAppData } from '@/lib/useAppData';
 import { useAuth } from '@/contexts/useAuth';
 import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
-import { runWhatIf } from '@/lib/forecast';
 import {
   createOnboardingDraft,
   parseCourseList,
@@ -29,18 +40,40 @@ import {
   type SetupReminderState,
 } from '@/lib/onboarding';
 import {
-  cgpa,
+  GRADE_SCALE,
   totalCredits,
   type Assessment,
   type CourseUnit,
+  type Semester,
 } from '@/lib/types';
+import {
+  academicTotals,
+  courseContributions,
+  courseWeights,
+  honoursBracketFor,
+  maximumGradePointForScale,
+  MINIMUM_GRADUATION_CGPA,
+  parseAcademicBaseline,
+  requiredAverageForRemaining,
+  scoreCoverage,
+  semesterGpa,
+  trajectoryWithBaseline,
+  type SemesterBaseline,
+} from '@/lib/onboardingStats';
 import { AnimatedProgressRing } from '@/ui/effects/AnimatedProgressRing';
-import { Celebration } from '@/ui/effects/Celebration';
-import { CountUp } from '@/ui/effects/CountUp';
 import { EnterList } from '@/ui/effects/EnterList';
 import { StepTransition } from '@/ui/effects/StepTransition';
+import { useReducedMotionPreference } from '@/ui/effects/useReducedMotionPreference';
 
 const steps = ['Optional setup link', 'About you', 'Course units', 'Target CGPA', 'Any results yet?', 'Finish'];
+const stepDescriptions = [
+  'Bring an existing CGP setup into this workspace, or start fresh.',
+  'Choose your institution and add the programme and semester details you know.',
+  'Add course units and credits now; you can fill in anything missing later.',
+  'A target is optional. Leave it blank if you have not decided yet.',
+  'Add real results if you have them. Your preview updates after a brief pause.',
+  'Review the details you entered and open your academic dashboard.',
+];
 const stepIllustrations = [
   setupLinkIllustration,
   aboutYouIllustration,
@@ -49,14 +82,78 @@ const stepIllustrations = [
   resultsIllustration,
   finishIllustration,
 ];
-const universities = [
-  'Kabale University',
-  'Makerere University',
-  'Kyambogo University',
-  'Mbarara University of Science and Technology',
-  'Uganda Christian University',
-  'Other',
+const universityGroups = [
+  {
+    label: 'Public Universities',
+    options: [
+      'Makerere University (MAK) - Kampala',
+      'Kyambogo University (KYU) - Kampala',
+      'Mbarara University of Science and Technology (MUST) - Mbarara',
+      'Gulu University (GU) - Gulu',
+      'Busitema University (BU) - Busitema / Tororo',
+      'Kabale University (KAB) - Kabale',
+      'Lira University (LU) - Lira',
+      'Muni University (MU) - Arua',
+      'Soroti University (SUN) - Soroti',
+      'Mountains of the Moon University (MMU) - Fort Portal',
+      'Makerere University Business School (MUBS) - Nakawa',
+    ],
+  },
+  {
+    label: 'Private Chartered Universities',
+    options: [
+      'Uganda Christian University (UCU) - Mukono',
+      'Uganda Martyrs University (UMU) - Nkozi',
+      'Islamic University in Uganda (IUIU) - Mbale / Kampala',
+      'Ndejje University (NDU) - Luweero / Kampala',
+      'Nkumba University (NKU) - Entebbe',
+      'Bugema University (BMU) - Bugema / Kampala',
+      'Kampala International University (KIU) - Kansanga, Kampala',
+      'Bishop Stuart University (BSU) - Mbarara',
+      'International University of East Africa (IUEA) - Kansanga, Kampala',
+      'ISBAT University - Kampala',
+      'Kampala University (KU) - Ggaba, Kampala',
+      'African Bible University (ABU) - Lubowa',
+      'Victoria University Uganda (VU) - Kampala',
+    ],
+  },
+  {
+    label: 'Provisionally Licensed Private Universities',
+    options: [
+      'Cavendish University Uganda (CUU) - Kampala',
+      'Clarke International University (CIU) - Kampala',
+      'Africa Renewal University (AfRU) - Buloba',
+      'African Rural University (ARU) - Kagadi',
+      'Aga Khan University (AKU) - Kampala',
+      'All Saints University Lango (ASUL) - Lira',
+      'Ankole Western University (AWU) - Kabwohe',
+      'Great Lakes Regional University (GLRU) - Kanungu',
+      'Kumi University (KUMU) - Kumi',
+      'LivingStone International University (LIU) - Mbale',
+      'Muteesa I Royal University (MRU) - Masaka / Kirumba',
+      'King Ceasor University (KCU) - Bunga, Kampala',
+      'Metropolitan International University (MIU) - Kisoro / Kampala',
+      'St. Lawrence University (SLAU) - Mengo, Kampala',
+      'Uganda Pentecostal University (UPU) - Fort Portal',
+      'University of Kisubi (UNIK) - Kisubi',
+      'University of the Sacred Heart Gulu (USHG) - Gulu',
+      'UTAMU (Uganda Technology and Management University) - Kampala',
+      'Ibanda University (IU) - Ibanda',
+      'Nexus International University (NIU) - Kampala',
+      'Islamic Call University College (ICUC) - Kampala',
+    ],
+  },
+  {
+    label: 'Specialized and Military Institutions',
+    options: [
+      'Uganda Management Institute (UMI) - Kampala',
+      'National Defence College, Uganda (NDCU) - Njeru',
+      'Uganda Military Engineering College (UMEC) - Lugazi',
+      'Uganda Senior Command and Staff College (USCSC) - Kimaka, Jinja',
+    ],
+  },
 ];
+const universities = universityGroups.flatMap((group) => group.options);
 
 const emptyMetrics: OnboardingMetrics = {
   stepReached: {},
@@ -148,7 +245,7 @@ function makePreviewCourse(course: OnboardingDraft['courses'][number], score: nu
     name: course.name.trim(),
     code: '',
     creditUnits: course.creditUnits,
-    targetGradePoint: 5,
+    targetGradePoint: maximumGradePointForScale(),
     semesterId: 'onboarding-preview',
     assessments,
     topics: [],
@@ -158,6 +255,7 @@ function makePreviewCourse(course: OnboardingDraft['courses'][number], score: nu
 }
 
 export function OnboardingPage() {
+  const prefersReducedMotion = useReducedMotionPreference();
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -179,11 +277,35 @@ export function OnboardingPage() {
   const [saveError, setSaveError] = useState('');
   const [pasteCourses, setPasteCourses] = useState('');
   const [finishError, setFinishError] = useState('');
+  const [targetInput, setTargetInput] = useState(() => draft.targetCGPA === null ? '' : draft.targetCGPA.toFixed(2));
+  const [targetTouched, setTargetTouched] = useState(false);
+  const [baselineInputs, setBaselineInputs] = useState({
+    cgpa: '',
+    creditsEarned: '',
+    semesters: [] as Array<{ id: string; label: string; gpa: string; credits: string }>,
+  });
+  const [committedBaseline, setCommittedBaseline] = useState<{
+    cgpa: number | null;
+    creditsEarned: number | null;
+    semesters: SemesterBaseline[];
+  }>({ cgpa: null, creditsEarned: null, semesters: [] });
+  const [systemDark, setSystemDark] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [cgpaMovement, setCgpaMovement] = useState<number | null>(null);
   const lastRecordedStep = useRef<number | null>(null);
+  const previousCgpa = useRef<number | null>(null);
+  const movementTimer = useRef<number | null>(null);
   const scorePreviewTimers = useRef(new Map<string, number>());
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const initialData = useRef(data);
   const restart = new URLSearchParams(location.search).get('again') === '1';
+
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-color-scheme: dark)');
+    const updatePreference = () => setSystemDark(preference.matches);
+    preference.addEventListener('change', updatePreference);
+    return () => preference.removeEventListener('change', updatePreference);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -201,6 +323,8 @@ export function OnboardingPage() {
         nextDraft = draftFromSettings(initialData.current);
       }
       setDraft(nextDraft);
+      setTargetInput(nextDraft.targetCGPA === null ? '' : nextDraft.targetCGPA.toFixed(2));
+      setTargetTouched(false);
       setPreviewScores({ ...nextDraft.scores });
       setScoreInputs(scoresToInputs(nextDraft.scores));
       setMetrics(validMetrics(saved?.metrics));
@@ -263,18 +387,95 @@ export function OnboardingPage() {
     }));
   }, [draft.currentStep, storageReady]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setCommittedBaseline(parseAcademicBaseline(baselineInputs));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [baselineInputs]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const parsed = Number(targetInput);
+      setDraft((current) => ({
+        ...current,
+        targetCGPA: targetInput.trim() !== ''
+          && Number.isFinite(parsed)
+          && parsed >= 0
+          && parsed <= maximumGradePointForScale()
+          ? parsed
+          : null,
+      }));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [targetInput]);
+
   const previewCourses = useMemo(() => draft.courses
     .filter((course) => course.name.trim())
     .map((course) => makePreviewCourse(course, previewScores[course.id] ?? null)), [draft.courses, previewScores]);
   const creditTotal = totalCredits(previewCourses);
-  const coursesWithResults = previewCourses.filter((course) => course.assessments.length > 0).length;
-  const resultsCoverage = previewCourses.length
-    ? (coursesWithResults / previewCourses.length) * 100
-    : 0;
-  const currentCgpa = cgpa(previewCourses);
-  const hasTargetOrResults = draft.targetCGPA !== null
-    || Object.values(previewScores).some((score) => score !== null);
-  const projection = hasTargetOrResults && previewCourses.length ? runWhatIf(previewCourses, {}) : null;
+  const matchingPreviewSemester = data.semesters.find((semester) =>
+    semester.academicYear.trim().toLowerCase() === draft.academicYear.trim().toLowerCase()
+    && semester.semesterNumber === draft.currentSemester);
+  const previewSemesterId = matchingPreviewSemester?.id ?? 'onboarding-preview';
+  const previewCoursesInSemester = previewCourses.map((course) => ({
+    ...course,
+    semesterId: previewSemesterId,
+  }));
+  const statsCourses = [
+    ...data.courses.filter((course) => !previewCoursesInSemester.some((previewCourse) =>
+      course.semesterId === previewCourse.semesterId
+      && course.name.trim().toLocaleLowerCase() === previewCourse.name.trim().toLocaleLowerCase())),
+    ...previewCoursesInSemester,
+  ];
+  const previewSemesters: Semester[] = matchingPreviewSemester || previewCourses.length === 0
+    ? data.semesters
+    : [...data.semesters, {
+      id: previewSemesterId,
+      academicYear: draft.academicYear,
+      semesterNumber: draft.currentSemester,
+      createdAt: draft.startedAt,
+    }];
+  const currentSemesterCourses = statsCourses.filter((course) => course.semesterId === previewSemesterId);
+  const currentSemesterCoverage = scoreCoverage(currentSemesterCourses);
+  const currentSemesterGpa = semesterGpa(currentSemesterCourses, previewSemesterId);
+  const baseline = {
+    cgpa: committedBaseline.cgpa,
+    creditsEarned: committedBaseline.creditsEarned,
+    semesters: committedBaseline.semesters,
+  };
+  const academicTotalsPreview = academicTotals(statsCourses, baseline);
+  const baselineSummary = academicTotals([], baseline);
+  const currentCgpa = academicTotalsPreview.cgpa;
+  const maximumGradePoint = maximumGradePointForScale();
+  const parsedTargetInput = Number(targetInput);
+  const targetInputIsValid = targetInput.trim() !== ''
+    && Number.isFinite(parsedTargetInput)
+    && parsedTargetInput >= 0
+    && parsedTargetInput <= maximumGradePoint;
+  const targetInputIsPending = targetTouched && (
+    targetInputIsValid
+      ? draft.targetCGPA !== parsedTargetInput
+      : draft.targetCGPA !== null
+  );
+  const previewTarget = targetTouched
+    ? targetInputIsPending ? null : draft.targetCGPA
+    : draft.targetCGPA ?? (data.settings.targetSet === false ? null : data.settings.targetCGPA);
+  const weights = courseWeights(previewCourses);
+  const contributions = courseContributions(currentSemesterCourses);
+  const allContributions = courseContributions(statsCourses);
+  const qualityPoints = academicTotalsPreview.qualityPoints;
+  const creditsDone = academicTotalsPreview.credits;
+  const completedCourseIds = new Set(allContributions.map((contribution) => contribution.courseId));
+  const remainingCredits = statsCourses.reduce((sum, course) =>
+    completedCourseIds.has(course.id) ? sum : sum + course.creditUnits, 0);
+  const requiredAverage = previewTarget === null
+    ? null
+    : requiredAverageForRemaining(previewTarget, creditsDone, qualityPoints, remainingCredits);
+  const honoursBracket = previewTarget === null ? null : honoursBracketFor(previewTarget);
+  const trajectory = trajectoryWithBaseline(previewSemesters, statsCourses, baseline);
+  const chartTextColor = systemDark ? '#cbd5e1' : '#475569';
+  const chartGridColor = systemDark ? '#475569' : '#cbd5e1';
 
   useEffect(() => {
     if (currentCgpa === null || metrics.timeToFirstCgpaMs !== null) return;
@@ -282,6 +483,24 @@ export function OnboardingPage() {
       ? { ...current, timeToFirstCgpaMs: Math.max(0, Date.now() - draft.startedAt) }
       : current);
   }, [currentCgpa, draft.startedAt, metrics.timeToFirstCgpaMs]);
+
+  useEffect(() => {
+    const previous = previousCgpa.current;
+    if (previous !== null && currentCgpa !== null) {
+      const movement = Number((currentCgpa - previous).toFixed(2));
+      if (movement !== 0) {
+        setCgpaMovement(movement);
+        if (movementTimer.current !== null) window.clearTimeout(movementTimer.current);
+        movementTimer.current = window.setTimeout(() => setCgpaMovement(null), 2400);
+      }
+    } else {
+      setCgpaMovement(null);
+    }
+    previousCgpa.current = currentCgpa;
+    return () => {
+      if (movementTimer.current !== null) window.clearTimeout(movementTimer.current);
+    };
+  }, [currentCgpa]);
 
   const updateDraft = (updates: Partial<OnboardingDraft>) => {
     setDraft((current) => ({ ...current, ...updates }));
@@ -402,31 +621,50 @@ export function OnboardingPage() {
     }
   };
 
+  const skipSetup = () => finish();
+
   if (!storageReady) {
     return <main className="flex min-h-[50vh] items-center justify-center text-sm text-ink-500" role="status">Restoring your setup…</main>;
   }
 
   const isOtherUniversity = draft.university === 'Other';
-  const universityName = isOtherUniversity ? draft.otherUniversity.trim() : draft.university.trim();
-  const finishGreeting = draft.programme.trim()
-    ? `A great start to your ${draft.programme.trim()} journey!`
-    : `A great start to your academic journey${universityName ? ` at ${universityName}` : ''}!`;
   const setUniversity = (value: string) => {
     updateDraft({ university: value });
   };
+  const handleStepKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Enter') return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.type === 'button') return;
+    event.preventDefault();
+    moveTo(draft.currentStep + 1);
+  };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
-      <header className="rounded-2xl bg-gradient-to-r from-primary-600 to-primary-800 p-5 text-white shadow-lg sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary-100">Welcome to CGP</p>
-        <h1 className="mt-1 font-display text-2xl font-black sm:text-3xl">Set up your academic workspace</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-primary-100">Add as much or as little as you like. Your progress is saved as you go.</p>
+    <div className="mx-auto flex min-h-[calc(100vh-2.5rem)] w-full max-w-6xl flex-col bg-ink-50 text-ink-900 tabular-nums [&_.input::placeholder]:text-ink-500 dark:bg-ink-950 dark:text-ink-50 dark:[&_.text-ink-500]:!text-ink-300 dark:[&_.text-ink-600]:!text-ink-300 dark:[&_.text-ink-700]:!text-ink-200 dark:[&_.text-ink-900]:!text-ink-50 dark:[&_.bg-white]:!bg-ink-900 dark:[&_.bg-ink-50]:!bg-ink-800 dark:[&_.border-ink-100]:!border-ink-700 dark:[&_.border-ink-200]:!border-ink-700 dark:[&_.input]:!border-ink-600 dark:[&_.input]:!bg-ink-800 dark:[&_.input]:!text-ink-50 dark:[&_.input::placeholder]:!text-ink-300 dark:[&_.label]:!text-ink-200">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-ink-200 bg-white px-3 py-3 dark:border-ink-700 dark:bg-ink-900 sm:px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <img src="/cgp-mark.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0 rounded-xl" />
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-semibold text-ink-900 dark:text-ink-50">CGP setup</h1>
+            <p className="mt-0.5 text-xs text-ink-600 dark:text-ink-300">Progress saves as you go</p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="rounded-full border border-ink-300 bg-white px-3 py-1.5 text-xs font-semibold tabular-nums text-ink-700 dark:border-ink-600 dark:bg-ink-800 dark:text-ink-100" aria-live="polite">
+            Step {draft.currentStep + 1} of {steps.length}
+          </span>
+          <button type="button" className="text-sm font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300" onClick={skipSetup}>
+            Skip setup
+          </button>
+        </div>
       </header>
 
-      <nav aria-label="Setup progress" className="card p-4 sm:p-5">
+      <main className="flex w-full flex-1 flex-col items-center px-3 py-4 sm:px-5 sm:py-6 lg:justify-center">
+      <div className="w-full max-w-5xl space-y-4 sm:space-y-5">
+      <nav aria-label="Setup progress" className="rounded-2xl border border-ink-200 bg-white p-4 shadow-sm dark:border-ink-700 dark:bg-ink-900 sm:p-5">
         <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-          <span className="font-semibold text-ink-800">Step {draft.currentStep + 1} of {steps.length}</span>
-          <span className="hidden text-ink-500 sm:inline">{steps[draft.currentStep]}</span>
+          <span className="font-semibold text-ink-900 dark:text-ink-50">Setup progress</span>
+          <span className="hidden tabular-nums text-ink-600 dark:text-ink-300 sm:inline">{Math.round(((draft.currentStep + 1) / steps.length) * 100)}% complete</span>
         </div>
         <div
           role="progressbar"
@@ -434,37 +672,32 @@ export function OnboardingPage() {
           aria-valuemin={1}
           aria-valuemax={steps.length}
           aria-valuenow={draft.currentStep + 1}
-          className="h-2 overflow-hidden rounded-full bg-ink-100"
+          className="h-2 overflow-hidden rounded-full bg-ink-200 dark:bg-ink-700"
         >
           <div className="h-full rounded-full bg-primary-600 transition-all" style={{ width: `${((draft.currentStep + 1) / steps.length) * 100}%` }} />
         </div>
-        <ol aria-label="Step indicators" className="mt-4 flex justify-center gap-2 sm:hidden">
+        <ol aria-label="Setup steps" className="mt-3 hidden grid-cols-6 gap-2 text-center text-xs text-ink-600 dark:text-ink-300 lg:grid">
           {steps.map((step, index) => (
-            <li key={step} aria-current={index === draft.currentStep ? 'step' : undefined}>
-              <span className={`block rounded-full ${index === draft.currentStep ? 'h-2.5 w-5 bg-primary-600' : 'h-2.5 w-2.5 bg-ink-200'}`} />
-              <span className="sr-only">{step}</span>
-            </li>
-          ))}
-        </ol>
-        <ol className="mt-3 hidden grid-cols-6 gap-2 text-center text-xs text-ink-500 sm:grid">
-          {steps.map((step, index) => (
-            <li key={step} className={index === draft.currentStep ? 'font-semibold text-primary-700' : ''}>{step}</li>
+            <li key={step} aria-current={index === draft.currentStep ? 'step' : undefined} className={index === draft.currentStep ? 'font-semibold text-primary-700 dark:text-primary-300' : ''}>{step}</li>
           ))}
         </ol>
       </nav>
 
-      {saveError && <p role="alert" className="rounded-xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700">{saveError}</p>}
+      {saveError && <p role="alert" className="rounded-xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-800 dark:border-error-700 dark:bg-error-900 dark:text-error-100">{saveError}</p>}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
-        <section className="card min-w-0 p-4 sm:p-6" aria-labelledby="onboarding-step-title">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+        <section className="card min-w-0 p-4 shadow-sm dark:border-ink-700 dark:bg-ink-900 sm:p-6" aria-labelledby="onboarding-step-title" onKeyDown={handleStepKeyDown}>
           <div className="flex items-center justify-between gap-3">
-            <h2 ref={stepHeadingRef} id="onboarding-step-title" tabIndex={-1} className="font-display text-2xl font-bold text-ink-900 sm:text-3xl">{steps[draft.currentStep]}</h2>
-            <img src={stepIllustrations[draft.currentStep]} alt="" aria-hidden="true" className="h-16 w-20 shrink-0 object-contain sm:h-20 sm:w-28" />
+            <div className="min-w-0">
+              <h2 ref={stepHeadingRef} id="onboarding-step-title" tabIndex={-1} className="font-display text-xl font-bold text-ink-900 dark:text-ink-50 sm:text-2xl">{steps[draft.currentStep]}</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-5 text-ink-600 dark:text-ink-300">{stepDescriptions[draft.currentStep]}</p>
+            </div>
+            <img src={stepIllustrations[draft.currentStep]} alt="" aria-hidden="true" className="h-14 w-16 shrink-0 object-contain sm:h-16 sm:w-20" />
           </div>
-          <StepTransition step={draft.currentStep} className="mt-5 space-y-5">
+          <StepTransition step={draft.currentStep} className="mt-4 space-y-4">
             {draft.currentStep === 0 && (
               <>
-                <p className="text-sm leading-6 text-ink-600">Have a CGP setup link or code? Preview it and choose what to import. You can skip this if you are starting fresh.</p>
+                <p className="text-sm leading-6 text-ink-600">Paste a CGP setup link or code to review what it contains before importing. If you are starting fresh, continue to the next step.</p>
                 <ImportSetupPage onImported={importedSetup} />
               </>
             )}
@@ -475,7 +708,14 @@ export function OnboardingPage() {
                   <label htmlFor="onboarding-university" className="label">University</label>
                   <select id="onboarding-university" className="input" value={universities.includes(draft.university) ? draft.university : draft.university ? 'Other' : ''} onChange={(event) => setUniversity(event.target.value)} aria-label="University">
                     <option value="">Choose a university (optional)</option>
-                    {universities.map((university) => <option key={university} value={university}>{university}</option>)}
+                    {universityGroups.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((university) => (
+                          <option key={university} value={university}>{university}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <option value="Other">Other</option>
                   </select>
                 </div>
                 {isOtherUniversity && (
@@ -486,7 +726,7 @@ export function OnboardingPage() {
                 )}
                 <div className="sm:col-span-2">
                   <label htmlFor="onboarding-programme" className="label">Programme</label>
-                  <input id="onboarding-programme" className="input" maxLength={120} value={draft.programme} onChange={(event) => updateDraft({ programme: event.target.value })} placeholder="e.g. Bachelor of Agriculture" />
+                  <input id="onboarding-programme" className="input" maxLength={120} value={draft.programme} onChange={(event) => updateDraft({ programme: event.target.value })} />
                 </div>
                 <div>
                   <label htmlFor="onboarding-year" className="label">Year of study</label>
@@ -504,21 +744,84 @@ export function OnboardingPage() {
                 </div>
                 <div className="sm:col-span-2">
                   <label htmlFor="onboarding-academic-year" className="label">Academic year</label>
-                  <input id="onboarding-academic-year" className="input" maxLength={20} value={draft.academicYear} onChange={(event) => updateDraft({ academicYear: event.target.value })} placeholder="e.g. 2026/2027" />
+                  <input id="onboarding-academic-year" className="input" maxLength={20} value={draft.academicYear} onChange={(event) => updateDraft({ academicYear: event.target.value })} />
                 </div>
+                <section className="sm:col-span-2 space-y-4 border-t border-ink-200 pt-4 dark:border-ink-700" aria-labelledby="past-results-title">
+                  <div>
+                    <h3 id="past-results-title" className="text-base font-semibold text-ink-900 dark:text-ink-50">Previous academic results (optional)</h3>
+                    <p className="mt-1 text-sm leading-5 text-ink-600 dark:text-ink-300">Use these shortcuts for previous results that are not already entered as course units. Semester totals take priority over the overall shortcut.</p>
+                    <p className="mt-1 text-xs leading-5 text-ink-600 dark:text-ink-300">Shortcut values are used for this setup summary only. Add course details and results to save them as academic records.</p>
+                  </div>
+                  <fieldset className="grid gap-3 rounded-xl border border-ink-200 p-3 dark:border-ink-700 sm:grid-cols-2">
+                    <legend className="px-1 text-sm font-medium text-ink-800 dark:text-ink-100">I already know my CGPA and credits earned</legend>
+                    <div>
+                      <label htmlFor="baseline-cgpa" className="label">Current CGPA</label>
+                      <input id="baseline-cgpa" className="input tabular-nums" type="number" min={0} max={maximumGradePoint} step={0.01} inputMode="decimal" value={baselineInputs.cgpa} onChange={(event) => setBaselineInputs((current) => ({ ...current, cgpa: event.target.value }))} aria-describedby="baseline-cgpa-help" />
+                      <p id="baseline-cgpa-help" className="mt-1 text-xs text-ink-600 dark:text-ink-300">Use the same grade scale as CGP.</p>
+                    </div>
+                    <div>
+                      <label htmlFor="baseline-credits" className="label">Credits earned</label>
+                      <input id="baseline-credits" className="input tabular-nums" type="number" min={0} step={1} inputMode="decimal" value={baselineInputs.creditsEarned} onChange={(event) => setBaselineInputs((current) => ({ ...current, creditsEarned: event.target.value }))} />
+                    </div>
+                  </fieldset>
+                  <fieldset className="space-y-3 rounded-xl border border-ink-200 p-3 dark:border-ink-700">
+                    <legend className="px-1 text-sm font-medium text-ink-800 dark:text-ink-100">Per-semester totals</legend>
+                    {baselineInputs.semesters.map((semester, index) => (
+                      <div key={semester.id} className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[minmax(0,1.3fr)_minmax(5rem,.7fr)_minmax(5rem,.7fr)_auto]">
+                        <div className="col-span-2 sm:col-span-1">
+                          <label htmlFor={`baseline-semester-label-${semester.id}`} className="label">Semester label</label>
+                          <input id={`baseline-semester-label-${semester.id}`} className="input" value={semester.label} onChange={(event) => setBaselineInputs((current) => ({
+                            ...current,
+                            semesters: current.semesters.map((item) => item.id === semester.id ? { ...item, label: event.target.value } : item),
+                          }))} aria-label={`Label for past semester ${index + 1}`} />
+                        </div>
+                        <div>
+                          <label htmlFor={`baseline-semester-gpa-${semester.id}`} className="label">GPA</label>
+                          <input id={`baseline-semester-gpa-${semester.id}`} className="input tabular-nums" type="number" min={0} max={maximumGradePoint} step={0.01} inputMode="decimal" value={semester.gpa} onChange={(event) => setBaselineInputs((current) => ({
+                            ...current,
+                            semesters: current.semesters.map((item) => item.id === semester.id ? { ...item, gpa: event.target.value } : item),
+                          }))} />
+                        </div>
+                        <div>
+                          <label htmlFor={`baseline-semester-credits-${semester.id}`} className="label">Credits</label>
+                          <input id={`baseline-semester-credits-${semester.id}`} className="input tabular-nums" type="number" min={0} step={1} inputMode="decimal" value={semester.credits} onChange={(event) => setBaselineInputs((current) => ({
+                            ...current,
+                            semesters: current.semesters.map((item) => item.id === semester.id ? { ...item, credits: event.target.value } : item),
+                          }))} />
+                        </div>
+                        <button type="button" className="mb-0.5 inline-flex h-11 w-10 items-center justify-center rounded-lg text-ink-600 hover:bg-error-50 hover:text-error-700 dark:text-ink-300 dark:hover:bg-error-900" aria-label={`Remove past semester ${index + 1}`} onClick={() => setBaselineInputs((current) => ({
+                          ...current,
+                          semesters: current.semesters.filter((item) => item.id !== semester.id),
+                        }))}>
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    ))}
+                    <button type="button" className="btn-secondary" onClick={() => setBaselineInputs((current) => ({
+                      ...current,
+                      semesters: [...current.semesters, {
+                        id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+                        label: '',
+                        gpa: '',
+                        credits: '',
+                      }],
+                    }))}>Add semester total</button>
+                    <p className="text-xs leading-5 text-ink-600 dark:text-ink-300">Enter GPA and credits for semesters not already represented by course results. Course detail can be added later.</p>
+                  </fieldset>
+                </section>
               </div>
             )}
 
             {draft.currentStep === 2 && (
               <div className="space-y-5">
-                <p className="text-sm leading-6 text-ink-600">Add your course units. Missing names are highlighted but will not stop you from continuing.</p>
+                <p className="text-sm leading-6 text-ink-600 dark:text-ink-300">Add course units now or leave this list empty and add them later.</p>
                 <div className="space-y-3">
                   {draft.courses.map((course, index) => (
                     <EnterList key={course.id} delay={0} className="w-full">
                       <div className="grid grid-cols-[minmax(0,1fr)_6rem_2.5rem] items-end gap-2">
                         <div className="min-w-0">
                           <label htmlFor={`course-name-${course.id}`} className="label">Course unit {index + 1}</label>
-                          <input id={`course-name-${course.id}`} className="input" maxLength={120} value={course.name} onChange={(event) => updateCourseRow(course.id, { name: event.target.value })} placeholder="e.g. Soil Science" />
+                          <input id={`course-name-${course.id}`} className="input" maxLength={120} value={course.name} onChange={(event) => updateCourseRow(course.id, { name: event.target.value })} />
                           {!course.name.trim() && <p className="mt-1 text-xs text-warning-700">Add a course name or leave this row blank.</p>}
                         </div>
                         <div>
@@ -539,8 +842,8 @@ export function OnboardingPage() {
                 </button>
                 <div className="border-t border-ink-100 pt-4">
                   <label htmlFor="onboarding-course-paste" className="label">Paste a course list</label>
-                  <p className="mb-2 text-xs text-ink-500">Example: Soil Science 3, Botany 3</p>
-                  <textarea id="onboarding-course-paste" className="input min-h-20" value={pasteCourses} onChange={(event) => setPasteCourses(event.target.value)} placeholder="Soil Science 3, Botany 3" />
+                  <p className="mb-2 text-xs text-ink-600 dark:text-ink-300">Use comma-, semicolon-, or line-separated course names with optional credit units.</p>
+                  <textarea id="onboarding-course-paste" className="input min-h-20" value={pasteCourses} onChange={(event) => setPasteCourses(event.target.value)} />
                   <button type="button" className="btn-secondary mt-2 inline-flex items-center gap-2" disabled={!pasteCourses.trim()} onClick={applyCourseList}>Add pasted course units</button>
                 </div>
               </div>
@@ -550,30 +853,47 @@ export function OnboardingPage() {
               <div className="space-y-4">
                 <p className="text-sm leading-6 text-ink-600">A target is optional. You can change it later in your CGP settings.</p>
                 <div className="max-w-xs">
-                  <label htmlFor="onboarding-target-cgpa" className="label">Target CGPA (out of 5)</label>
+                  <label htmlFor="onboarding-target-cgpa" className="label">Target CGPA (out of {maximumGradePoint})</label>
                   <input
                     id="onboarding-target-cgpa"
                     type="number"
                     min={0}
-                    max={5}
+                    max={maximumGradePoint}
                     step={0.01}
-                    className="input"
-                    value={draft.targetCGPA ?? ''}
-                    onChange={(event) => updateDraft({
-                      targetCGPA: event.target.value === ''
-                        ? null
-                        : Math.min(5, Math.max(0, Number(event.target.value))),
-                    })}
+                    className="input tabular-nums"
+                    value={targetInput}
+                    onChange={(event) => {
+                      setTargetInput(event.target.value);
+                      setTargetTouched(true);
+                    }}
+                    aria-describedby="onboarding-target-help"
+                    aria-invalid={targetInput.trim() !== '' && (
+                      !Number.isFinite(Number(targetInput))
+                      || Number(targetInput) < 0
+                      || Number(targetInput) > maximumGradePoint
+                    )}
                     placeholder="Optional"
                   />
-                  <p className="mt-1 text-xs text-ink-500">Leave blank to set a target later.</p>
+                  {targetInput.trim() !== '' && (
+                    Number.isFinite(Number(targetInput))
+                    && Number(targetInput) >= 0
+                    && Number(targetInput) <= maximumGradePoint
+                    && Number(targetInput) === maximumGradePoint
+                      ? <p className="mt-1 text-xs leading-5 text-warning-800 dark:text-warning-300">A target of {maximumGradePoint.toFixed(2)} requires the highest grade point in every course under this grading scale.</p>
+                      : (!Number.isFinite(Number(targetInput))
+                        || Number(targetInput) < 0
+                        || Number(targetInput) > maximumGradePoint)
+                        ? <p id="onboarding-target-error" role="alert" className="mt-1 text-xs leading-5 text-error-700 dark:text-error-300">Enter a target within the configured grade scale.</p>
+                        : null
+                  )}
+                  <p id="onboarding-target-help" className="mt-1 text-xs text-ink-600 dark:text-ink-300">Leave blank to set a target later.</p>
                 </div>
               </div>
             )}
 
             {draft.currentStep === 4 && (
               <div className="space-y-4">
-                <p className="text-sm leading-6 text-ink-600">If you have results, enter your current percentage for each course unit. Leave blank or skip if you do not have results yet.</p>
+                <p className="text-sm leading-6 text-ink-600">If you have results, enter the current percentage for each course unit. Leave fields blank if results are not available yet.</p>
                 {previewCourses.length ? (
                   <div className="space-y-3">
                     {previewCourses.map((course) => {
@@ -598,7 +918,7 @@ export function OnboardingPage() {
                                   aria-invalid={scoreIsInvalid}
                                   aria-describedby={scoreIsInvalid ? `result-error-${course.id}` : undefined}
                                 />
-                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400">%</span>
+                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-600 dark:text-ink-300">%</span>
                               </div>
                               {scoreIsInvalid && <p id={`result-error-${course.id}`} className="mt-1 text-xs text-error-700">Enter a percentage from 0 to 100.</p>}
                             </div>
@@ -608,7 +928,7 @@ export function OnboardingPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="rounded-xl bg-ink-50 p-4 text-sm text-ink-600">Add course units first, or skip this step and enter results later.</p>
+                  <p className="rounded-xl bg-ink-50 p-4 text-sm text-ink-600">Add course units first, or continue and enter results later.</p>
                 )}
               </div>
             )}
@@ -618,15 +938,14 @@ export function OnboardingPage() {
                 <div className="flex items-start gap-3 rounded-xl border border-success-200 bg-success-50 p-4">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success-700" aria-hidden="true" />
                   <div>
-                    <h3 className="font-semibold text-success-900">{finishGreeting}</h3>
+                    <h3 className="font-semibold text-success-900">Setup complete. Your workspace is ready.</h3>
                     <p className="mt-1 text-sm leading-6 text-success-800">
-                      <CountUp value={previewCourses.length} /> course unit(s), <CountUp value={creditTotal} /> total credits
-                      {currentCgpa !== null && <>; current CGPA <CountUp value={currentCgpa} decimalPlaces={2} />.</>}
+                      {previewCourses.length} course units, {creditTotal.toLocaleString()} entered credits
+                      {currentCgpa !== null && <>; current CGPA is {currentCgpa.toFixed(2)}.</>}
                     </p>
                   </div>
                 </div>
-                <Celebration active={!draft.completed} />
-                <p className="text-sm leading-6 text-ink-600">You can add assessments, results, targets, and topics later. Your choices are saved to this account and will sync when a connection is available.</p>
+                <p className="text-sm leading-6 text-ink-600">You can add assessments, results, targets, and topics later. Your choices are saved to this account and sync when a connection is available.</p>
                 {finishError && <p role="alert" className="rounded-lg bg-error-50 p-3 text-sm text-error-700">{finishError}</p>}
                 <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={finish}>Finish setting up <ArrowRight className="h-4 w-4" /></button>
               </div>
@@ -634,49 +953,274 @@ export function OnboardingPage() {
           </StepTransition>
 
           {draft.currentStep < 5 && (
-            <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 pt-5">
+            <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-ink-200 pt-5 dark:border-ink-700">
               <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={() => moveTo(draft.currentStep - 1)} disabled={draft.currentStep === 0}>
                 <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back
               </button>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" className="rounded-lg px-3 py-2 text-sm font-semibold text-ink-600 hover:bg-ink-50" onClick={() => moveTo(draft.currentStep + 1, true)}>Skip</button>
-                <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={() => moveTo(draft.currentStep + 1)}>
-                  Next <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </div>
+              <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={() => moveTo(draft.currentStep + 1)}>
+                Next <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </button>
             </div>
           )}
         </section>
 
-        <aside aria-label="Live academic preview" className="order-last rounded-2xl border border-primary-100 bg-white p-4 shadow-sm lg:sticky lg:top-6 lg:order-none">
+        <aside aria-label="Setup summary" className="order-last min-w-0 rounded-2xl border border-ink-200 bg-white p-4 shadow-sm dark:border-ink-700 dark:bg-ink-900 lg:sticky lg:top-6 lg:order-none">
           <div className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-            <BookOpen className="h-4 w-4 text-primary-600" aria-hidden="true" /> Live preview
+            <BookOpen className="h-4 w-4 text-primary-600" aria-hidden="true" /> Summary
           </div>
-          <p className="mt-1 text-xs text-ink-500">Updates as you add course units and results.</p>
+          <p className="mt-1 text-xs text-ink-500">Calculated from your saved records and this setup only.</p>
           <div className="mt-4 rounded-xl bg-primary-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Total credits</p>
-            <p className="mt-1 font-display text-3xl font-bold text-primary-900"><CountUp value={creditTotal} /></p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Entered course credits</p>
+            <p className="mt-1 font-display text-3xl font-bold text-primary-900">{creditTotal.toLocaleString()}</p>
             <p className="text-xs text-primary-700">{previewCourses.length} course unit{previewCourses.length === 1 ? '' : 's'}</p>
           </div>
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-ink-100 p-3">
-            <AnimatedProgressRing value={resultsCoverage} label="Course units with results" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink-900">Results entered</p>
-              <p className="mt-1 text-xs leading-5 text-ink-500">
-                {coursesWithResults} of {previewCourses.length} course units
-              </p>
-            </div>
-          </div>
-          {projection && (
-            <div className="mt-3 rounded-xl border border-ink-200 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-500"><Target className="h-3.5 w-3.5" /> Projected CGPA</div>
-              <p className="mt-1 font-display text-2xl font-bold text-ink-900"><CountUp value={projection.projectedCGPA} decimalPlaces={2} /></p>
-              <p className="mt-1 text-xs leading-5 text-ink-500">Illustrative projection using CGP’s current what-if assumptions.</p>
-              {projection.projectedSemesterGPAs.map((semester, index) => (
-                <p key={`${semester.semesterId}-${index}`} className="mt-2 text-xs text-ink-600">Projected semester trend: {semester.gpa.toFixed(2)}</p>
-              ))}
-            </div>
+          {draft.currentStep === 2 && (
+            <section className="mt-4" aria-labelledby="preview-weights-title">
+              <h3 id="preview-weights-title" className="text-sm font-semibold text-ink-900">Credit weights</h3>
+              {weights.length === 0 ? (
+                <p className="mt-2 rounded-lg bg-ink-50 p-3 text-xs text-ink-500">Add named course units to see how their entered credits are weighted.</p>
+              ) : (
+                <>
+                  <ul className="mt-3 space-y-3">
+                    {weights.map((weight) => (
+                      <li key={weight.courseId}>
+                        <div className="mb-1 flex items-center justify-between gap-2 text-xs">
+                          <span className="min-w-0 truncate font-medium text-ink-700">{weight.courseName}</span>
+                          <span className="shrink-0 text-ink-500">{weight.percent?.toFixed(1)}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-ink-100" role="img" aria-label={`${weight.courseName}: ${weight.percent?.toFixed(1)} percent of entered credits`}>
+                          <div className="h-full rounded-full bg-primary-500" style={{ width: `${weight.percent ?? 0}%` }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="sr-only">
+                    Course credit weights: {weights.map((weight) => `${weight.courseName}, ${weight.percent?.toFixed(1)} percent`).join('; ')}.
+                  </p>
+                </>
+              )}
+            </section>
           )}
+
+          {draft.currentStep === 3 && (
+            <section className="mt-4 rounded-xl border border-ink-100 p-4" aria-labelledby="preview-target-title">
+              <h3 id="preview-target-title" className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                <Target className="h-4 w-4 text-primary-600" aria-hidden="true" /> Target and honours
+              </h3>
+              {previewTarget === null ? (
+                <p className="mt-2 text-sm leading-5 text-ink-600 dark:text-ink-300">No target entered. Add one to review it against the CGP grade scale.</p>
+              ) : honoursBracket ? (
+                <div className="mt-3 flex items-center gap-3">
+                  <AnimatedProgressRing
+                    value={(previewTarget / maximumGradePoint) * 100}
+                    label="Target position on the configured honours scale"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-display text-2xl font-bold tabular-nums text-ink-900 dark:text-ink-50">
+                      {previewTarget.toFixed(2)}
+                    </p>
+                    <p className="text-sm text-ink-600 dark:text-ink-300">{honoursBracket.label}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-sm leading-5 text-ink-600 dark:text-ink-300">
+                  {previewTarget < MINIMUM_GRADUATION_CGPA
+                    ? `No honours band applies below ${MINIMUM_GRADUATION_CGPA.toFixed(2)}. The supplied configuration lists this as the minimum CGPA for graduation.`
+                    : 'No classification band is configured for this target.'}
+                </p>
+              )}
+              <details className="mt-3 text-sm text-ink-700 dark:text-ink-200">
+                <summary className="cursor-pointer font-semibold">How is this calculated?</summary>
+                <p className="mt-2 leading-5">The target is compared with CGP’s configured grading scale. Classification labels appear only when an honours bracket is configured.</p>
+                <ul className="mt-2 space-y-1">
+                  {GRADE_SCALE.map((grade) => (
+                    <li key={`${grade.gp}-${grade.label}`} className="tabular-nums">
+                      {grade.label}: {grade.minPercent}% and above = {grade.gp.toFixed(2)} grade points
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </section>
+          )}
+
+          {(draft.currentStep === 1 || draft.currentStep === 5) && (
+            <section className="mt-4" aria-labelledby="preview-trend-title">
+              <h3 id="preview-trend-title" className="text-sm font-semibold text-ink-900">
+                {draft.currentStep === 5 ? 'CGPA trend' : 'Semester history'}
+              </h3>
+              {trajectory.filter((point) => point.cumulativeCgpa !== null).length < 2 ? (
+                <p className="mt-2 rounded-lg bg-ink-50 p-3 text-sm text-ink-600 dark:bg-ink-800 dark:text-ink-300">A trend appears after results are available for at least two semesters.</p>
+              ) : (
+                <>
+                  <div role="img" aria-label="Cumulative CGPA by semester">
+                    <ResponsiveContainer width="100%" height={draft.currentStep === 5 ? 105 : 190}>
+                      <LineChart data={trajectory} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
+                        {draft.currentStep !== 5 && <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />}
+                        {draft.currentStep !== 5 && <XAxis dataKey="label" tick={{ fontSize: 12, fill: chartTextColor }} />}
+                        <YAxis hide={draft.currentStep === 5} domain={[0, maximumGradePoint]} tick={{ fontSize: 12, fill: chartTextColor }} />
+                        <Tooltip formatter={(value, name) => [
+                          typeof value === 'number' ? value.toFixed(2) : '—',
+                          name === 'projectedCgpa' ? 'Projected CGPA' : 'Actual CGPA',
+                        ]} />
+                        {previewTarget !== null && <ReferenceLine y={previewTarget} stroke="#a21caf" />}
+                        <Line type="monotone" dataKey="cumulativeCgpa" name="Actual" stroke="#2563eb" strokeWidth={2} dot={draft.currentStep === 5 ? false : { r: 3 }} connectNulls isAnimationActive={!prefersReducedMotion} />
+                        {trajectory.some((point) => point.projectedCgpa !== null) && (
+                          <Line type="monotone" dataKey="projectedCgpa" name="Projected" stroke="#2563eb" strokeWidth={2} strokeDasharray="5 4" dot={false} connectNulls isAnimationActive={!prefersReducedMotion} />
+                        )}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="sr-only">
+                    {trajectory.filter((point) => point.cumulativeCgpa !== null)
+                      .map((point) => `${point.label}: actual cumulative CGPA ${point.cumulativeCgpa?.toFixed(2)}`)
+                      .join('; ')}.
+                  </p>
+                  <p className="mt-1 text-xs text-ink-600 dark:text-ink-300">Actual results use a solid line. Projections use a dashed line.</p>
+                </>
+              )}
+            </section>
+          )}
+
+          {draft.currentStep === 1 && (
+            <section className="mt-4 rounded-xl border border-ink-200 p-3 dark:border-ink-700" aria-labelledby="preview-baseline-title">
+              <h3 id="preview-baseline-title" className="text-sm font-semibold text-ink-900 dark:text-ink-50">Previous results entered</h3>
+              {baselineSummary.credits > 0 ? (
+                <>
+                  <p className="mt-2 text-sm text-ink-700 dark:text-ink-200">
+                    Weighted CGPA {baselineSummary.cgpa?.toFixed(2)} across {baselineSummary.credits.toLocaleString()} credits.
+                  </p>
+                  {committedBaseline.semesters.map((semester) => (
+                    <p key={semester.id} className="mt-1 text-xs text-ink-600 dark:text-ink-300">
+                      {semester.label || 'Semester total'}: GPA {semester.gpa.toFixed(2)}, {semester.credits.toLocaleString()} credits
+                    </p>
+                  ))}
+                </>
+              ) : (
+                <p className="mt-2 text-sm text-ink-600 dark:text-ink-300">No previous results entered.</p>
+              )}
+            </section>
+          )}
+
+          {draft.currentStep === 4 && (
+            <section className="mt-4 space-y-3" aria-labelledby="preview-results-title">
+              <h3 id="preview-results-title" className="text-sm font-semibold text-ink-900">Results overview</h3>
+              <div className="rounded-xl border border-ink-100 p-3">
+                <p className="text-xs font-medium text-ink-500">Current semester GPA</p>
+                {currentSemesterGpa === null ? (
+                  <p className="mt-1 text-sm text-ink-500">No valid scores yet.</p>
+                ) : (
+                  <p className="mt-1 font-display text-2xl font-bold tabular-nums text-ink-900">{currentSemesterGpa.toFixed(2)}</p>
+                )}
+                <p className="mt-1 text-xs text-ink-500">{currentSemesterCoverage.label}</p>
+                <details className="mt-2 text-sm text-ink-700 dark:text-ink-200">
+                  <summary className="cursor-pointer font-semibold">How is this calculated?</summary>
+                  <p className="mt-2 leading-5">Semester GPA = the sum of each scored course’s grade points × credits, divided by credits for scored courses. Unscored courses are excluded.</p>
+                  <ul className="mt-2 space-y-1">
+                    {GRADE_SCALE.map((grade) => (
+                      <li key={`${grade.gp}-${grade.label}`} className="tabular-nums">
+                        {grade.label}: {grade.minPercent}% and above = {grade.gp.toFixed(2)} grade points
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
+              {contributions.length < 2 ? (
+                <p className="rounded-lg bg-ink-50 p-3 text-xs text-ink-500">
+                  {contributions.length === 1
+                    ? `${contributions[0].courseName}: ${contributions[0].qualityPoints?.toFixed(2)} quality points. Add a second scored course to display the comparison chart.`
+                    : currentSemesterCoverage.status === 'empty'
+                      ? 'Enter valid course results to see quality-point contributions.'
+                      : 'No valid course results are available for this semester.'}
+                </p>
+              ) : (
+                <>
+                  <div role="img" aria-label="Quality-point contribution by course">
+                    <ResponsiveContainer width="100%" height={Math.max(120, Math.min(260, contributions.length * 38))}>
+                      <BarChart data={contributions} layout="vertical" margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                        <XAxis type="number" hide />
+                        <YAxis type="category" dataKey="courseName" width={90} tick={{ fontSize: 12, fill: chartTextColor }} />
+                        <Tooltip formatter={(value) => [typeof value === 'number' ? value.toFixed(2) : '—', 'Quality points']} />
+                        <Bar dataKey="qualityPoints" fill="#2563eb" radius={[0, 4, 4, 0]} isAnimationActive={!prefersReducedMotion} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <p className="sr-only">
+                    Course quality-point contributions: {contributions.map((contribution) => `${contribution.courseName}, ${contribution.qualityPoints?.toFixed(2)}`).join('; ')}.
+                  </p>
+                </>
+              )}
+            </section>
+          )}
+
+          {draft.currentStep === 5 && (
+            <section className="mt-4 space-y-3" aria-labelledby="preview-finish-title">
+              <h3 id="preview-finish-title" className="text-sm font-semibold text-ink-900">Setup summary</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-ink-50 p-3">
+                <p className="text-xs text-ink-600">{committedBaseline.creditsEarned !== null || committedBaseline.semesters.length > 0 ? 'Summary CGPA with baseline' : 'Current CGPA'}</p>
+                  <p className="mt-1 font-display text-lg font-bold text-ink-900">
+                    {currentCgpa === null ? '—' : currentCgpa.toFixed(2)}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-ink-50 p-3">
+                  <p className="text-xs text-ink-500">Target CGPA</p>
+                  <p className="mt-1 font-display text-lg font-bold text-ink-900">
+                    {previewTarget === null ? 'Not set' : previewTarget.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+              {cgpaMovement !== null && (
+                <p aria-live="polite" className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${cgpaMovement > 0 ? 'bg-success-50 text-success-700' : 'bg-warning-50 text-warning-700'}`}>
+                  {cgpaMovement > 0 ? '+' : ''}{cgpaMovement.toFixed(2)} CGPA change
+                </p>
+              )}
+              {previewTarget !== null && (
+                <p className="rounded-lg border border-ink-100 p-3 text-xs text-ink-600">
+                  {currentCgpa === null
+                    ? 'Enter valid results to calculate the target gap.'
+                    : `Target gap: ${Math.abs(previewTarget - currentCgpa).toFixed(2)} ${currentCgpa >= previewTarget ? 'above target' : 'to target'}.`}
+                </p>
+              )}
+              {previewTarget !== null && requiredAverage && (
+                <div className="rounded-lg border border-ink-100 p-3">
+                  <p className="text-xs font-medium text-ink-500">Average needed across remaining listed credits</p>
+                  <p className="mt-1 text-sm font-semibold text-ink-900">
+                    {requiredAverage.status === 'reachable'
+                      ? `${requiredAverage.average?.toFixed(2)} grade points`
+                      : requiredAverage.status === 'already secured'
+                        ? 'Already secured by entered results'
+                        : 'Not reachable using only the listed remaining credits'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-ink-600 dark:text-ink-300">This uses only entered remaining credits. CGP does not have a total programme-credit value.</p>
+                  <details className="mt-2 text-sm text-ink-700 dark:text-ink-200">
+                    <summary className="cursor-pointer font-semibold">How is this calculated?</summary>
+                    <p className="mt-2 leading-5">Required average = (target × (credits earned + listed remaining credits) − quality points earned) ÷ listed remaining credits. Quality points are grade points × credits.</p>
+                    <ul className="mt-2 space-y-1">
+                      {GRADE_SCALE.map((grade) => (
+                        <li key={`${grade.gp}-${grade.label}`} className="tabular-nums">
+                          {grade.label}: {grade.minPercent}% and above = {grade.gp.toFixed(2)} grade points
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
+              )}
+              {previewTarget !== null && !requiredAverage && (
+                <p className="rounded-lg bg-ink-50 p-3 text-xs text-ink-500">Required average is unavailable until valid course-credit data is entered.</p>
+              )}
+            </section>
+          )}
+
+          {(draft.currentStep === 0 || draft.currentStep === 1) && (
+            <section className="mt-4 rounded-xl border border-ink-100 p-3">
+              <p className="text-xs font-medium text-ink-500">Current CGPA from scored courses</p>
+              <p className="mt-1 font-display text-2xl font-bold text-ink-900">
+                {currentCgpa === null ? '—' : currentCgpa.toFixed(2)}
+              </p>
+              <p className="mt-1 text-xs text-ink-500">{scoreCoverage(statsCourses).label}</p>
+            </section>
+          )}
+
           {saveError ? (
             <p role="status" className="mt-3 text-xs text-error-700">{saveError}</p>
           ) : (
@@ -685,6 +1229,8 @@ export function OnboardingPage() {
           {draft.completed && <Link to="/dashboard" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary-700">Go to dashboard <ChevronDown className="h-4 w-4 rotate-[-90deg]" /></Link>}
         </aside>
       </div>
+      </div>
+      </main>
     </div>
   );
 }

@@ -29,8 +29,74 @@ export interface SharedSetupPreview {
   expires_at: string;
 }
 
+export interface SharedSetupPrivacyIssue {
+  location: string;
+  reason: string;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getUnsafeTextReason(value: string): string | null {
+  if (/[<>]/.test(value) || Array.from(value).some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code < 32 || code === 127;
+  })) return 'contains markup or unsupported control characters';
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value)) return 'appears to contain an email address';
+  if (/\b\d{3}[- .()][0-9]{3,}[- .()][0-9]{3,}\b/.test(value)) return 'appears to contain a phone number';
+  if (/\b(student|registration|reg)\s*(id|number|no\.?)\b/i.test(value)) return 'appears to contain a student or registration identifier';
+  return null;
+}
+
+export function getSharedSetupPrivacyIssues(
+  value: unknown,
+  title: string,
+  includeAssessments: boolean,
+  includeTopics: boolean,
+): SharedSetupPrivacyIssue[] {
+  const issues: SharedSetupPrivacyIssue[] = [];
+  const check = (text: unknown, location: string) => {
+    if (typeof text !== 'string') return;
+    const reason = getUnsafeTextReason(text);
+    if (reason) issues.push({ location, reason });
+  };
+
+  check(title, 'Setup name');
+  if (!isObject(value) || !Array.isArray(value.semesters)) return issues;
+
+  value.semesters.forEach((semester, semesterIndex) => {
+    if (!isObject(semester)) return;
+    const semesterLabel = typeof semester.academicYear === 'string'
+      ? `Semester ${semester.academicYear} ${String(semester.semesterNumber ?? '')}`.trim()
+      : `Semester ${semesterIndex + 1}`;
+    check(semester.academicYear, `${semesterLabel} academic year`);
+    if (!Array.isArray(semester.courses)) return;
+    semester.courses.forEach((course, courseIndex) => {
+      if (!isObject(course)) return;
+      const courseName = typeof course.name === 'string' && course.name.trim()
+        ? course.name.trim()
+        : `Course ${courseIndex + 1}`;
+      const courseLabel = `${semesterLabel}, ${courseName}`;
+      check(course.name, `${courseLabel} course name`);
+      check(course.code, `${courseLabel} course code`);
+      if (includeAssessments && Array.isArray(course.assessments)) {
+        course.assessments.forEach((assessment, assessmentIndex) => {
+          if (isObject(assessment)) {
+            check(assessment.name, `${courseLabel}, assessment ${assessmentIndex + 1} name`);
+          }
+        });
+      }
+      if (includeTopics && Array.isArray(course.topics)) {
+        course.topics.forEach((topic, topicIndex) => {
+          if (isObject(topic)) {
+            check(topic.title, `${courseLabel}, topic ${topicIndex + 1}`);
+          }
+        });
+      }
+    });
+  });
+  return issues;
 }
 
 function plainText(value: unknown, maximum: number) {

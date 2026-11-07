@@ -4,7 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useAppData } from '@/lib/useAppData';
 import { platformAdapter } from '@/lib/platformAdapter';
 import { supabase } from '@/lib/supabase';
-import { isSharedSetupPayload } from '@/lib/sharedSetup';
+import { getSharedSetupPrivacyIssues, isSharedSetupPayload } from '@/lib/sharedSetup';
 
 type ExpiryDays = 1 | 7 | 30;
 
@@ -146,8 +146,20 @@ export function ShareSetupPage() {
       setError('Add at least one semester before sharing a setup.');
       return;
     }
+    const privacyIssues = getSharedSetupPrivacyIssues(
+      payload,
+      title.trim(),
+      includeAssessments,
+      includeTopics,
+    );
+    if (privacyIssues.length > 0) {
+      setError(`Remove private or unsupported content before sharing: ${privacyIssues
+        .map(({ location, reason }) => `${location} ${reason}`)
+        .join('; ')}.`);
+      return;
+    }
     if (!isSharedSetupPayload(payload)) {
-      setError('This course setup contains values that cannot be shared safely.');
+      setError('The selected setup details are incomplete or outside the supported sharing limits. Check the preview and try again.');
       return;
     }
     setBusyAction('create');
@@ -174,7 +186,12 @@ export function ShareSetupPage() {
     } catch (requestError) {
       if (!isNetworkFailure(requestError)) console.error('Unable to create a CGP setup link.', requestError);
       if (isNetworkFailure(requestError)) setMessage('Connect to the internet to create a share link. Your course setup stays safely on this device.');
-      else setError('The setup link could not be created. Confirm the shared-setup migration is installed.');
+      else if (requestError && typeof requestError === 'object'
+        && 'code' in requestError && requestError.code === '22023') {
+        setError('The server rejected the selected setup details during privacy or format validation. Review the preview and remove private identifiers or unsupported content.');
+      } else {
+        setError('The setup link could not be created. Confirm the shared-setup migration is installed and try again.');
+      }
     } finally {
       setBusyAction('');
     }

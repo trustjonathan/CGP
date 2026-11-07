@@ -10,5 +10,8 @@ contextBridge.exposeInMainWorld('desktopApp', {
 contextBridge.exposeInMainWorld('multiVaultAPI', {
   saveVault: (data) => ipcRenderer.invoke('vault:save-multi', data),
   loadVault: () => ipcRenderer.invoke('vault:load-multi'),
+  saveBackupSecret: (userId, secret) => ipcRenderer.invoke('vault:save-backup-secret', userId, secret),
+  loadBackupSecret: (userId) => ipcRenderer.invoke('vault:load-backup-secret', userId),
+  clearBackupSecret: (userId) => ipcRenderer.invoke('vault:clear-backup-secret', userId),
   copyToClipboard: (text, autoClearSec) => ipcRenderer.invoke('vault:copy-sensitive', text, autoClearSec),
 });

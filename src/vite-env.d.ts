@@ -10,6 +10,9 @@ interface Window {
 	multiVaultAPI?: {
 		saveVault: (data: unknown) => Promise<boolean>;
 		loadVault: () => Promise<unknown>;
+		saveBackupSecret: (userId: string, secret: string) => Promise<boolean>;
+		loadBackupSecret: (userId: string) => Promise<string | null>;
+		clearBackupSecret: (userId: string) => Promise<boolean>;
 		copyToClipboard: (text: string, autoClearSec?: number) => Promise<boolean>;
 	};
 }

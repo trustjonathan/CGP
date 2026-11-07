@@ -31,7 +31,7 @@ function formatExpiry(value: string) {
   return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-export function ImportSetupPage() {
+export function ImportSetupPage({ onImported }: { onImported?: () => void } = {}) {
   const { token: routeToken } = useParams<{ token: string }>();
   const navigate = useNavigate();
   const { data: localData, importSetupRecords } = useAppData();
@@ -298,9 +298,11 @@ export function ImportSetupPage() {
       const added = await importSetupRecords(preview.id, activeToken, records);
       if (!added) {
         setNotice('Already imported to this CGP account. No duplicate data was added.');
+        onImported?.();
         return;
       }
       setNotice('Setup imported to your CGP account.');
+      onImported?.();
     } catch (requestError) {
       if (!platformAdapter.isNetworkError(requestError)) {
         console.error('Unable to import the shared CGP setup.', requestError);

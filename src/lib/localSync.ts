@@ -1,11 +1,12 @@
 import type { AppData, CourseUnit, Semester } from './types';
 
 const DATABASE_NAME = 'cgpa-tracker-local';
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 const RECORD_STORE = 'records';
 const SYNC_STORE = 'sync_state';
 const ACCOUNT_RECORD_STORE = 'account_records';
 const OUTBOX_STORE = 'sync_outbox';
+const ONBOARDING_STORE = 'onboarding_state';
 
 type RecordType = 'semester' | 'course' | 'settings';
 
@@ -51,10 +52,47 @@ function openDatabase(): Promise<IDBDatabase> {
         const outbox = database.createObjectStore(OUTBOX_STORE, { keyPath: 'id' });
         outbox.createIndex('user_id', 'user_id', { unique: false });
       }
+      if (!database.objectStoreNames.contains(ONBOARDING_STORE)) {
+        database.createObjectStore(ONBOARDING_STORE, { keyPath: 'user_id' });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
+}
+
+export async function readOnboardingState(userId: string): Promise<import('./onboarding').OnboardingLocalState | null> {
+  const database = await openDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = database.transaction(ONBOARDING_STORE, 'readonly')
+        .objectStore(ONBOARDING_STORE).get(userId);
+      request.onsuccess = () => resolve(request.result ?? null);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function saveOnboardingState(
+  userId: string,
+  state: Omit<import('./onboarding').OnboardingLocalState, 'user_id' | 'updated_at'>,
+): Promise<import('./onboarding').OnboardingLocalState> {
+  const database = await openDatabase();
+  const next = { ...state, user_id: userId, updated_at: new Date().toISOString() };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(ONBOARDING_STORE, 'readwrite');
+      transaction.objectStore(ONBOARDING_STORE).put(next);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error || new Error('The local onboarding save was aborted.'));
+    });
+    return next;
+  } finally {
+    database.close();
+  }
 }
 
 function accountKey(userId: string, id: string) {

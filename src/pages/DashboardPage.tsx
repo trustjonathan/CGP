@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -10,6 +10,8 @@ import {
   ArrowRight,
   Sparkles,
   RefreshCw,
+  Clock3,
+  X,
 } from 'lucide-react';
 import {
   LineChart,
@@ -35,14 +37,84 @@ import {
 } from '@/lib/types';
 import { getGapToTarget } from '@/lib/forecast';
 import { ProgressRing, StatCard, GradeBadge, ProgressBar, EmptyState } from '@/components/ui';
+import { useAuth } from '@/contexts/useAuth';
+import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
+import { getSetupCompleteness, shouldShowSetupReminder, type OnboardingLocalState, type SetupReminderState } from '@/lib/onboarding';
+
+const emptyReminder: SetupReminderState = { lastShownAt: null, snoozedUntil: null, dismissals: 0, notificationsEnabled: false };
 
 export function DashboardPage() {
   const { data, loadSampleData } = useAppData();
+  const { user } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [reminder, setReminder] = useState<SetupReminderState>(emptyReminder);
+  const [reminderReady, setReminderReady] = useState(false);
+  const [reminderError, setReminderError] = useState('');
+  const completeness = getSetupCompleteness(data);
+  const showSetupReminder = reminderReady && Boolean(completeness.nextStep) && shouldShowSetupReminder(reminder);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) return () => { active = false; };
+    void readOnboardingState(user.id).then((state) => {
+      if (!active) return;
+      setReminder(state?.reminder ?? emptyReminder);
+      setReminderReady(true);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      console.error('Unable to load local CGP setup reminder state.', error);
+      setReminderReady(true);
+      setReminderError('Setup reminder preferences could not be loaded.');
+    });
+    return () => { active = false; };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!showSetupReminder || !user?.id) return;
+    const today = new Date().toDateString();
+    if (reminder.lastShownAt && new Date(reminder.lastShownAt).toDateString() === today) return;
+    if (reminder.notificationsEnabled && window.desktopApp && window.Notification?.permission === 'granted' && completeness.nextStep) {
+      new window.Notification('CGP setup reminder', { body: completeness.nextStep.label, tag: 'cgp-setup-reminder' });
+    }
+    const next = { ...reminder, lastShownAt: Date.now() };
+    setReminder(next);
+    void persistReminder(user.id, next, reminder).catch((error: unknown) => {
+      console.error('Unable to save the setup reminder date.', error);
+      setReminderError('Setup reminder preferences could not be saved.');
+    });
+  }, [completeness.nextStep, reminder, showSetupReminder, user?.id]);
+
+  const snoozeReminder = async () => {
+    if (!user?.id) return;
+    const next = { ...reminder, snoozedUntil: Date.now() + 24 * 60 * 60 * 1000 };
+    setReminder(next);
+    try {
+      await persistReminder(user.id, next, reminder);
+      setReminderError('');
+    } catch (error) {
+      console.error('Unable to snooze the CGP setup reminder.', error);
+      setReminderError('The reminder could not be snoozed on this device.');
+    }
+  };
+
+  const dismissReminder = async () => {
+    if (!user?.id) return;
+    const next = { ...reminder, dismissals: reminder.dismissals + 1, snoozedUntil: Date.now() + 24 * 60 * 60 * 1000 };
+    setReminder(next);
+    try {
+      await persistReminder(user.id, next, reminder);
+      setReminderError('');
+    } catch (error) {
+      console.error('Unable to dismiss the CGP setup reminder.', error);
+      setReminderError('The reminder could not be dismissed on this device.');
+    }
+  };
   const currentCGPA = cgpa(data.courses);
+  const targetIsSet = data.settings.targetSet !== false;
+  const targetCGPA = targetIsSet ? data.settings.targetCGPA : TARGET_CGPA;
   const completedCU = totalCompletedCredits(data.courses);
   const totalCU = totalCredits(data.courses);
-  const gap = getGapToTarget(currentCGPA, TARGET_CGPA);
+  const gap = getGapToTarget(currentCGPA, targetCGPA);
 
   const semestersWithGPA = data.semesters
     .map((s) => ({
@@ -114,6 +186,28 @@ export function DashboardPage() {
         </div>
       )}
 
+      {showSetupReminder && completeness.nextStep && (
+        <section className="card flex flex-col gap-4 border-primary-200 bg-primary-50/60 p-4 sm:flex-row sm:items-center sm:p-5" aria-labelledby="setup-reminder-title">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="rounded-xl bg-white p-2 text-primary-700"><Clock3 className="h-5 w-5" aria-hidden="true" /></div>
+            <div className="min-w-0">
+              <h2 id="setup-reminder-title" className="font-display font-bold text-ink-900">
+                {data.settings.onboardingCompleted ? `Setup ${completeness.percentage}% complete` : 'Finish setting up'}
+              </h2>
+              <p className="mt-1 text-sm leading-5 text-ink-600">Next: {completeness.nextStep.label}</p>
+              {reminderError && <p role="status" className="mt-1 text-xs text-error-700">{reminderError}</p>}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Link to={completeness.nextStep.to} className="btn-primary">Continue setup</Link>
+            <button type="button" className="btn-secondary" onClick={() => void snoozeReminder()}>Snooze 1 day</button>
+            <button type="button" className="rounded-lg p-2 text-ink-500 hover:bg-white hover:text-ink-800" aria-label="Dismiss setup reminder" onClick={() => void dismissReminder()}>
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </section>
+      )}
+
       {!hasData ? (
         <EmptyState
           icon={BookOpen}
@@ -145,13 +239,16 @@ export function DashboardPage() {
                 color={ringColor}
               />
               <div className="mt-4 flex items-center gap-2">
-                {gap.status === 'on-track' && (
+                {!targetIsSet && (
+                  <span className="badge bg-ink-100 text-ink-600">No target set</span>
+                )}
+                {targetIsSet && gap.status === 'on-track' && (
                   <span className="badge bg-success-100 text-success-700">
                     <TrendingUp className="w-3 h-3" />
                     On Track
                   </span>
                 )}
-                {gap.status === 'behind' && (
+                {targetIsSet && gap.status === 'behind' && (
                   <span className="badge bg-warning-100 text-warning-700">
                     <TrendingDown className="w-3 h-3" />
                     {gap.gap.toFixed(2)} below target
@@ -169,10 +266,10 @@ export function DashboardPage() {
             <div className="lg:col-span-2 grid grid-cols-2 gap-4">
               <StatCard
                 label="Target CGPA"
-                value={TARGET_CGPA.toFixed(2)}
+                value={targetIsSet ? targetCGPA.toFixed(2) : '--'}
                 icon={Target}
                 color="accent"
-                hint="Your goal"
+                hint={targetIsSet ? 'Your goal' : 'Set a goal when ready'}
               />
               <StatCard
                 label="Completed Credits"
@@ -190,10 +287,10 @@ export function DashboardPage() {
               />
               <StatCard
                 label="Gap to Target"
-                value={currentCGPA === null ? '--' : gap.gap.toFixed(2)}
+                value={!targetIsSet || currentCGPA === null ? '--' : gap.gap.toFixed(2)}
                 icon={gap.status === 'on-track' ? TrendingUp : TrendingDown}
                 color={gap.status === 'on-track' ? 'success' : 'warning'}
-                hint={gap.status === 'on-track' ? 'Above target!' : 'Points to close'}
+                hint={!targetIsSet ? 'Set a target first' : gap.status === 'on-track' ? 'Above target!' : 'Points to close'}
               />
             </div>
           </div>
@@ -220,7 +317,7 @@ export function DashboardPage() {
                       contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                       formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'GPA']}
                     />
-                    <ReferenceLine y={5} stroke="#d946ef" strokeDasharray="5 5" label={{ value: 'Target', fontSize: 10, fill: '#a21caf' }} />
+                    {targetIsSet && <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="5 5" label={{ value: 'Target', fontSize: 10, fill: '#a21caf' }} />}
                     <Line
                       type="monotone"
                       dataKey="gpa"
@@ -255,7 +352,7 @@ export function DashboardPage() {
                       contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                       formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'CGPA']}
                     />
-                    <ReferenceLine y={5} stroke="#d946ef" strokeDasharray="5 5" />
+                    {targetIsSet && <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="5 5" />}
                     <Line
                       type="monotone"
                       dataKey="cgpa"
@@ -322,3 +419,13 @@ export function DashboardPage() {
 
 // Re-import locally used helpers
 import { courseAggregatePercent, courseCurrentGP } from '@/lib/types';
+
+async function persistReminder(userId: string, reminder: SetupReminderState, previous: SetupReminderState) {
+  const state = await readOnboardingState(userId);
+  const nextState: Omit<OnboardingLocalState, 'user_id' | 'updated_at'> = {
+    draft: state?.draft ?? null,
+    metrics: state?.metrics ?? { stepReached: {}, stepSkipped: {}, completed: 0, timeToFirstCgpaMs: null },
+    reminder: { ...previous, ...reminder },
+  };
+  await saveOnboardingState(userId, nextState);
+}
