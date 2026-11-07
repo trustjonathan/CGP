@@ -22,6 +22,7 @@ type ConfettiProps = ComponentPropsWithoutRef<'canvas'> & {
   options?: ConfettiOptions;
   globalOptions?: ConfettiGlobalOptions;
   manualstart?: boolean;
+  onReady?: () => void;
 };
 
 export const Confetti = forwardRef<ConfettiRef, ConfettiProps>((props, ref) => {
@@ -29,6 +30,7 @@ export const Confetti = forwardRef<ConfettiRef, ConfettiProps>((props, ref) => {
     options,
     globalOptions = { resize: true, useWorker: true },
     manualstart = false,
+    onReady,
     className,
     ...rest
   } = props;
@@ -36,6 +38,7 @@ export const Confetti = forwardRef<ConfettiRef, ConfettiProps>((props, ref) => {
   const instanceRef = useRef<ConfettiInstance | null>(null);
   const optionsRef = useRef(options);
   const globalOptionsRef = useRef(globalOptions);
+  const onReadyRef = useRef(onReady);
 
   useEffect(() => {
     optionsRef.current = options;
@@ -46,12 +49,17 @@ export const Confetti = forwardRef<ConfettiRef, ConfettiProps>((props, ref) => {
   }, [globalOptions]);
 
   useEffect(() => {
+    onReadyRef.current = onReady;
+  }, [onReady]);
+
+  useEffect(() => {
     if (canvasNodeRef.current && !instanceRef.current) {
       instanceRef.current = confetti.create(canvasNodeRef.current, {
         resize: true,
         useWorker: true,
         ...globalOptionsRef.current,
       });
+      onReadyRef.current?.();
     }
 
     return () => {

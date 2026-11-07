@@ -1,0 +1,17 @@
+Onboarding illustrations
+------------------------
+setup-link.svg, about-you.svg, course-units.svg, target-cgpa.svg, results.svg,
+and finish.svg are original CGP illustrations created for this project. They
+use the existing CGP Tailwind palette and contain no third-party assets.
+
+Magic UI effects
+----------------
+The NumberTicker, AnimatedCircularProgressBar, AnimatedList, BlurFade, and
+Confetti components are adapted from Magic UI (https://github.com/magicuidesign/magicui),
+licensed under the MIT License.
+
+Runtime packages
+----------------
+motion is MIT licensed.
+canvas-confetti is ISC licensed.
+@types/canvas-confetti is MIT licensed.

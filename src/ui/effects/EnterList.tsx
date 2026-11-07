@@ -1,6 +1,9 @@
-import type { ReactNode } from 'react';
-import { useReducedMotion } from 'motion/react';
-import { AnimatedList } from '@/components/ui/magicui/animated-list';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { useReducedMotionPreference } from './useReducedMotionPreference';
+
+const AnimatedList = lazy(() =>
+  import('@/components/ui/magicui/animated-list').then((module) => ({ default: module.AnimatedList })),
+);
 
 interface EnterListProps {
   children: ReactNode;
@@ -9,12 +12,14 @@ interface EnterListProps {
 }
 
 export function EnterList({ children, className, delay = 180 }: EnterListProps) {
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = useReducedMotionPreference();
   if (reducedMotion) return <div className={className}>{children}</div>;
 
   return (
-    <AnimatedList className={className} delay={delay}>
-      {children}
-    </AnimatedList>
+    <Suspense fallback={<div className={className}>{children}</div>}>
+      <AnimatedList className={className} delay={delay}>
+        {children}
+      </AnimatedList>
+    </Suspense>
   );
 }

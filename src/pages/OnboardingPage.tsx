@@ -10,6 +10,12 @@ import {
   Trash2,
   Target,
 } from 'lucide-react';
+import setupLinkIllustration from '@/assets/onboarding/setup-link.svg';
+import aboutYouIllustration from '@/assets/onboarding/about-you.svg';
+import courseUnitsIllustration from '@/assets/onboarding/course-units.svg';
+import targetCgpaIllustration from '@/assets/onboarding/target-cgpa.svg';
+import resultsIllustration from '@/assets/onboarding/results.svg';
+import finishIllustration from '@/assets/onboarding/finish.svg';
 import { ImportSetupPage } from '@/pages/ImportSetupPage';
 import { useAppData } from '@/lib/useAppData';
 import { useAuth } from '@/contexts/useAuth';
@@ -28,8 +34,21 @@ import {
   type Assessment,
   type CourseUnit,
 } from '@/lib/types';
+import { AnimatedProgressRing } from '@/ui/effects/AnimatedProgressRing';
+import { Celebration } from '@/ui/effects/Celebration';
+import { CountUp } from '@/ui/effects/CountUp';
+import { EnterList } from '@/ui/effects/EnterList';
+import { StepTransition } from '@/ui/effects/StepTransition';
 
 const steps = ['Optional setup link', 'About you', 'Course units', 'Target CGPA', 'Any results yet?', 'Finish'];
+const stepIllustrations = [
+  setupLinkIllustration,
+  aboutYouIllustration,
+  courseUnitsIllustration,
+  targetCgpaIllustration,
+  resultsIllustration,
+  finishIllustration,
+];
 const universities = [
   'Kabale University',
   'Makerere University',
@@ -173,13 +192,17 @@ export function OnboardingPage() {
       if (!active) return;
       const currentDraft = saved?.draft;
       const shouldRestart = restart && (!currentDraft || currentDraft.completed);
+      let nextDraft: OnboardingDraft;
       if (shouldRestart) {
-        setDraft(draftFromSettings(initialData.current));
+        nextDraft = draftFromSettings(initialData.current);
       } else if (isOnboardingDraft(currentDraft)) {
-        setDraft(currentDraft);
+        nextDraft = currentDraft;
       } else {
-        setDraft(draftFromSettings(initialData.current));
+        nextDraft = draftFromSettings(initialData.current);
       }
+      setDraft(nextDraft);
+      setPreviewScores({ ...nextDraft.scores });
+      setScoreInputs(scoresToInputs(nextDraft.scores));
       setMetrics(validMetrics(saved?.metrics));
       setReminder(validReminder(saved?.reminder));
       setStorageReady(true);
@@ -194,15 +217,9 @@ export function OnboardingPage() {
 
   useEffect(() => {
     if (!storageReady) return;
-    setPreviewScores({ ...draft.scores });
-    setScoreInputs(scoresToInputs(draft.scores));
-  }, [draft.startedAt, storageReady]);
-
-  useEffect(() => {
-    if (!storageReady) return;
     window.scrollTo({
       top: 0,
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
     });
     stepHeadingRef.current?.focus({ preventScroll: true });
   }, [draft.currentStep, storageReady]);
@@ -250,6 +267,10 @@ export function OnboardingPage() {
     .filter((course) => course.name.trim())
     .map((course) => makePreviewCourse(course, previewScores[course.id] ?? null)), [draft.courses, previewScores]);
   const creditTotal = totalCredits(previewCourses);
+  const coursesWithResults = previewCourses.filter((course) => course.assessments.length > 0).length;
+  const resultsCoverage = previewCourses.length
+    ? (coursesWithResults / previewCourses.length) * 100
+    : 0;
   const currentCgpa = cgpa(previewCourses);
   const hasTargetOrResults = draft.targetCGPA !== null
     || Object.values(previewScores).some((score) => score !== null);
@@ -386,6 +407,10 @@ export function OnboardingPage() {
   }
 
   const isOtherUniversity = draft.university === 'Other';
+  const universityName = isOtherUniversity ? draft.otherUniversity.trim() : draft.university.trim();
+  const finishGreeting = draft.programme.trim()
+    ? `A great start to your ${draft.programme.trim()} journey!`
+    : `A great start to your academic journey${universityName ? ` at ${universityName}` : ''}!`;
   const setUniversity = (value: string) => {
     updateDraft({ university: value });
   };
@@ -432,8 +457,11 @@ export function OnboardingPage() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
         <section className="card min-w-0 p-4 sm:p-6" aria-labelledby="onboarding-step-title">
-          <h2 ref={stepHeadingRef} id="onboarding-step-title" tabIndex={-1} className="font-display text-xl font-bold text-ink-900">{steps[draft.currentStep]}</h2>
-          <div className="mt-5 space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 ref={stepHeadingRef} id="onboarding-step-title" tabIndex={-1} className="font-display text-2xl font-bold text-ink-900 sm:text-3xl">{steps[draft.currentStep]}</h2>
+            <img src={stepIllustrations[draft.currentStep]} alt="" aria-hidden="true" className="h-16 w-20 shrink-0 object-contain sm:h-20 sm:w-28" />
+          </div>
+          <StepTransition step={draft.currentStep} className="mt-5 space-y-5">
             {draft.currentStep === 0 && (
               <>
                 <p className="text-sm leading-6 text-ink-600">Have a CGP setup link or code? Preview it and choose what to import. You can skip this if you are starting fresh.</p>
@@ -486,22 +514,24 @@ export function OnboardingPage() {
                 <p className="text-sm leading-6 text-ink-600">Add your course units. Missing names are highlighted but will not stop you from continuing.</p>
                 <div className="space-y-3">
                   {draft.courses.map((course, index) => (
-                    <div key={course.id} className="grid grid-cols-[minmax(0,1fr)_6rem_2.5rem] items-end gap-2">
-                      <div className="min-w-0">
-                        <label htmlFor={`course-name-${course.id}`} className="label">Course unit {index + 1}</label>
-                        <input id={`course-name-${course.id}`} className="input" maxLength={120} value={course.name} onChange={(event) => updateCourseRow(course.id, { name: event.target.value })} placeholder="e.g. Soil Science" />
-                        {!course.name.trim() && <p className="mt-1 text-xs text-warning-700">Add a course name or leave this row blank.</p>}
+                    <EnterList key={course.id} delay={0} className="w-full">
+                      <div className="grid grid-cols-[minmax(0,1fr)_6rem_2.5rem] items-end gap-2">
+                        <div className="min-w-0">
+                          <label htmlFor={`course-name-${course.id}`} className="label">Course unit {index + 1}</label>
+                          <input id={`course-name-${course.id}`} className="input" maxLength={120} value={course.name} onChange={(event) => updateCourseRow(course.id, { name: event.target.value })} placeholder="e.g. Soil Science" />
+                          {!course.name.trim() && <p className="mt-1 text-xs text-warning-700">Add a course name or leave this row blank.</p>}
+                        </div>
+                        <div>
+                          <label htmlFor={`course-cu-${course.id}`} className="label">Credits</label>
+                          <select id={`course-cu-${course.id}`} className="input" value={course.creditUnits} onChange={(event) => updateCourseRow(course.id, { creditUnits: Number(event.target.value) })}>
+                            {[1, 2, 3, 4, 5, 6].map((credits) => <option key={credits} value={credits}>{credits} CU</option>)}
+                          </select>
+                        </div>
+                        <button type="button" className="mb-0.5 inline-flex h-11 w-10 items-center justify-center rounded-lg text-ink-500 hover:bg-error-50 hover:text-error-700" aria-label={`Remove course unit ${index + 1}`} onClick={() => updateDraft({ courses: draft.courses.filter((item) => item.id !== course.id) })}>
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
                       </div>
-                      <div>
-                        <label htmlFor={`course-cu-${course.id}`} className="label">Credits</label>
-                        <select id={`course-cu-${course.id}`} className="input" value={course.creditUnits} onChange={(event) => updateCourseRow(course.id, { creditUnits: Number(event.target.value) })}>
-                          {[1, 2, 3, 4, 5, 6].map((credits) => <option key={credits} value={credits}>{credits} CU</option>)}
-                        </select>
-                      </div>
-                      <button type="button" className="mb-0.5 inline-flex h-11 w-10 items-center justify-center rounded-lg text-ink-500 hover:bg-error-50 hover:text-error-700" aria-label={`Remove course unit ${index + 1}`} onClick={() => updateDraft({ courses: draft.courses.filter((item) => item.id !== course.id) })}>
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                    </div>
+                    </EnterList>
                   ))}
                 </div>
                 <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={addCourseRow} disabled={draft.courses.length >= 100}>
@@ -550,28 +580,30 @@ export function OnboardingPage() {
                       const scoreValue = scoreInputs[course.id] ?? '';
                       const scoreIsInvalid = !parseScoreInput(scoreValue).valid;
                       return (
-                        <div key={course.id} className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-3 rounded-xl border border-ink-200 p-3">
-                          <label htmlFor={`result-${course.id}`} className="min-w-0 break-words text-sm font-medium text-ink-900">{course.name}</label>
-                          <div>
-                            <div className="relative">
-                              <input
-                                id={`result-${course.id}`}
-                                type="number"
-                                min={0}
-                                max={100}
-                                step={0.1}
-                                className="input pr-8"
-                                value={scoreValue}
-                                onChange={(event) => updateScore(course.id, event.target.value)}
-                                placeholder="Optional"
-                                aria-invalid={scoreIsInvalid}
-                                aria-describedby={scoreIsInvalid ? `result-error-${course.id}` : undefined}
-                              />
-                              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400">%</span>
+                        <EnterList key={course.id} delay={0} className="w-full">
+                          <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-3 rounded-xl border border-ink-200 p-3">
+                            <label htmlFor={`result-${course.id}`} className="min-w-0 break-words text-sm font-medium text-ink-900">{course.name}</label>
+                            <div>
+                              <div className="relative">
+                                <input
+                                  id={`result-${course.id}`}
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step={0.1}
+                                  className="input pr-8"
+                                  value={scoreValue}
+                                  onChange={(event) => updateScore(course.id, event.target.value)}
+                                  placeholder="Optional"
+                                  aria-invalid={scoreIsInvalid}
+                                  aria-describedby={scoreIsInvalid ? `result-error-${course.id}` : undefined}
+                                />
+                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-400">%</span>
+                              </div>
+                              {scoreIsInvalid && <p id={`result-error-${course.id}`} className="mt-1 text-xs text-error-700">Enter a percentage from 0 to 100.</p>}
                             </div>
-                            {scoreIsInvalid && <p id={`result-error-${course.id}`} className="mt-1 text-xs text-error-700">Enter a percentage from 0 to 100.</p>}
                           </div>
-                        </div>
+                        </EnterList>
                       );
                     })}
                   </div>
@@ -586,16 +618,20 @@ export function OnboardingPage() {
                 <div className="flex items-start gap-3 rounded-xl border border-success-200 bg-success-50 p-4">
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success-700" aria-hidden="true" />
                   <div>
-                    <h3 className="font-semibold text-success-900">Your setup is ready</h3>
-                    <p className="mt-1 text-sm leading-6 text-success-800">{previewCourses.length} course unit(s), {creditTotal} total credits{currentCgpa !== null ? `, current CGPA ${currentCgpa.toFixed(2)}` : ''}.</p>
+                    <h3 className="font-semibold text-success-900">{finishGreeting}</h3>
+                    <p className="mt-1 text-sm leading-6 text-success-800">
+                      <CountUp value={previewCourses.length} /> course unit(s), <CountUp value={creditTotal} /> total credits
+                      {currentCgpa !== null && <>; current CGPA <CountUp value={currentCgpa} decimalPlaces={2} />.</>}
+                    </p>
                   </div>
                 </div>
+                <Celebration active={!draft.completed} />
                 <p className="text-sm leading-6 text-ink-600">You can add assessments, results, targets, and topics later. Your choices are saved to this account and will sync when a connection is available.</p>
                 {finishError && <p role="alert" className="rounded-lg bg-error-50 p-3 text-sm text-error-700">{finishError}</p>}
                 <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={finish}>Finish setting up <ArrowRight className="h-4 w-4" /></button>
               </div>
             )}
-          </div>
+          </StepTransition>
 
           {draft.currentStep < 5 && (
             <div className="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-ink-100 pt-5">
@@ -619,13 +655,22 @@ export function OnboardingPage() {
           <p className="mt-1 text-xs text-ink-500">Updates as you add course units and results.</p>
           <div className="mt-4 rounded-xl bg-primary-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Total credits</p>
-            <p className="mt-1 font-display text-3xl font-bold text-primary-900">{creditTotal}</p>
+            <p className="mt-1 font-display text-3xl font-bold text-primary-900"><CountUp value={creditTotal} /></p>
             <p className="text-xs text-primary-700">{previewCourses.length} course unit{previewCourses.length === 1 ? '' : 's'}</p>
+          </div>
+          <div className="mt-4 flex items-center gap-3 rounded-xl border border-ink-100 p-3">
+            <AnimatedProgressRing value={resultsCoverage} label="Course units with results" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink-900">Results entered</p>
+              <p className="mt-1 text-xs leading-5 text-ink-500">
+                {coursesWithResults} of {previewCourses.length} course units
+              </p>
+            </div>
           </div>
           {projection && (
             <div className="mt-3 rounded-xl border border-ink-200 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-500"><Target className="h-3.5 w-3.5" /> Projected CGPA</div>
-              <p className="mt-1 font-display text-2xl font-bold text-ink-900">{projection.projectedCGPA.toFixed(2)}</p>
+              <p className="mt-1 font-display text-2xl font-bold text-ink-900"><CountUp value={projection.projectedCGPA} decimalPlaces={2} /></p>
               <p className="mt-1 text-xs leading-5 text-ink-500">Illustrative projection using CGP’s current what-if assumptions.</p>
               {projection.projectedSemesterGPAs.map((semester, index) => (
                 <p key={`${semester.semesterId}-${index}`} className="mt-2 text-xs text-ink-600">Projected semester trend: {semester.gpa.toFixed(2)}</p>
