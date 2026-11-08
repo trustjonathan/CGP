@@ -51,7 +51,9 @@ export function SyncStatusToast({
           {syncError
             ? <AlertCircle className="h-4 w-4 shrink-0 text-error-600" aria-hidden="true" />
             : <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-primary-600" aria-hidden="true" />}
-          <span className="min-w-0 flex-1">{syncError || 'Saving your changes to Supabase…'}</span>
+          <span className="min-w-0 flex-1">
+            {syncError ? 'Changes could not be saved.' : 'Saving your changes…'}
+          </span>
           {pendingConflict ? null : syncError ? (
             <button type="button" tabIndex={visible ? 0 : -1} className="shrink-0 font-semibold underline" onClick={retrySync}>
               Retry
@@ -74,7 +76,7 @@ export function SyncStatusToast({
               className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-error-800 shadow-sm"
               onClick={() => void resolveConflict('keep_server')}
             >
-              Keep cloud version
+              Keep synced version
             </button>
           </div>
         )}

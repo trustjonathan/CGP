@@ -100,7 +100,7 @@ function CloudWorkspace() {
       <main className="min-h-screen bg-ink-50 flex items-center justify-center">
         <div className="flex items-center gap-3 text-sm font-medium text-ink-500">
           <img src="/cgp-mark.svg" alt="" className="h-9 w-9 rounded-xl" />
-          Loading your CGP records from Supabase…
+          Loading your workspace…
         </div>
       </main>
     );
@@ -111,7 +111,9 @@ function CloudWorkspace() {
       <main className="min-h-screen bg-ink-50 flex items-center justify-center px-4">
         <section className="relative w-full max-w-lg rounded-2xl border border-error-200 bg-white p-7 shadow-sm">
           <h1 className="font-display text-xl font-bold text-ink-900">Your cloud workspace isn’t ready</h1>
-          <p role="alert" className="mt-3 text-sm leading-6 text-error-700">{loadError}</p>
+          <p role="alert" className="mt-3 text-sm leading-6 text-error-700">
+            Your workspace could not be loaded. Check your connection and try again.
+          </p>
           <button type="button" className="btn-primary mt-5" onClick={retryLoad}>Retry</button>
           <HelpAssistant />
         </section>
@@ -174,7 +176,7 @@ function OfflineStatusBanner() {
   return (
     <p role="status" className="mb-4 flex items-start gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm leading-6 text-primary-800">
       <WifiOff className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
-      <span>You’re offline. The web app needs Supabase access to load and save records; reconnect before editing or refreshing this page.</span>
+      <span>Offline. Some features need a connection.</span>
     </p>
   );
 }

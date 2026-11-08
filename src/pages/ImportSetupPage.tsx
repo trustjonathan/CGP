@@ -68,7 +68,7 @@ export function ImportSetupPage({ onImported }: { onImported?: () => void } = {}
     setPreview(null);
     setActiveToken(token);
     if (!navigator.onLine) {
-      setError('Connect to the internet to load a setup preview. Web imports require Supabase access.');
+      setError('Connect to preview this setup.');
       setLoading(false);
       return;
     }
@@ -338,7 +338,7 @@ export function ImportSetupPage({ onImported }: { onImported?: () => void } = {}
           </button>
         </div>
         {routeToken && <button type="button" className="inline-flex items-center gap-2 text-sm font-semibold text-primary-700 hover:text-primary-800" disabled={loading} onClick={() => void loadToken(routeToken)}><RefreshCw className="h-4 w-4" /> Reload shared link</button>}
-        {!navigator.onLine && <p className="rounded-lg bg-ink-50 p-3 text-sm text-ink-600">Connect to the internet to load or import a setup. Web setup data is read from and saved to Supabase.</p>}
+        {!navigator.onLine && <p className="rounded-lg bg-ink-50 p-3 text-sm text-ink-600">Connect to open or import a setup.</p>}
         {error && <p role="alert" className="flex items-start gap-2 rounded-lg bg-error-50 p-3 text-sm text-error-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>}
         {notice && <p role="status" className="rounded-lg bg-success-50 p-3 text-sm text-success-800">{notice}</p>}
       </section>

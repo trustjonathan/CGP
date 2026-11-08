@@ -11,7 +11,7 @@ const passwordRequirements = 'Use at least 8 characters.';
 function getDisplayAuthError(message: string): string {
   const normalized = message.toLowerCase();
   if (normalized.includes('email not confirmed')) {
-    return 'Sign-in is not enabled for this account yet. Please contact CGP support.';
+    return 'Confirm your email from your inbox, then sign in.';
   }
   if (normalized.includes('invalid login credentials')) {
     return 'Email or password is incorrect.';
@@ -71,7 +71,7 @@ export function AuthScreen({ onBack }: { onBack?: () => void } = {}) {
         if (result.error) {
           setErrorMessage(getDisplayAuthError(result.error));
         } else if (result.confirmationRequired) {
-          setSuccessMessage('Your account request was received, but sign-in is not enabled yet. Please contact CGP support.');
+          setSuccessMessage('Check your inbox to confirm your email, then sign in.');
           setMode('sign-in');
         }
       } else if (mode === 'forgot-password') {
@@ -147,8 +147,8 @@ export function AuthScreen({ onBack }: { onBack?: () => void } = {}) {
 
           {configurationError && (
             <div role="alert" className="mb-5 rounded-xl border border-warning-200 bg-warning-50 p-4 text-sm leading-6 text-warning-900">
-              <div className="font-semibold">Supabase configuration required</div>
-              <p>{configurationError}</p>
+              <div className="font-semibold">Sign-in is unavailable</div>
+              <p>Please try again later.</p>
             </div>
           )}
 
@@ -251,7 +251,7 @@ export function AuthScreen({ onBack }: { onBack?: () => void } = {}) {
           )}
 
           <div className="mt-7 border-t border-ink-100 pt-4 text-center text-xs leading-5 text-ink-400">
-            Your account protects your academic workspace. Your password is handled securely by Supabase Auth.
+            Your account protects your academic workspace.
           </div>
           <Link to="/releases" className="btn-secondary mt-4 w-full">
             <Download className="h-4 w-4" aria-hidden="true" />

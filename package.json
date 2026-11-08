@@ -1,7 +1,7 @@
 {
   "name": "cgp-academic-suite",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "CGP is a focused academic performance tool for tracking courses, planning semesters, and understanding CGPA.",
   "author": "Trust",
   "type": "module",

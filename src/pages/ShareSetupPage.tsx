@@ -112,7 +112,7 @@ export function ShareSetupPage() {
     if (requestError) {
       if (!isNetworkFailure(requestError)) console.error('Unable to load CGP setup links.', requestError);
       if (isNetworkFailure(requestError)) setMessage('Connect to the internet to load or manage your setup links.');
-      else setError('Your setup links could not be loaded. Confirm the shared-setup database migration is installed.');
+      else setError('Your setup links could not be loaded. Try again later.');
     } else {
       setLinks((rows ?? []) as SharedSetupRow[]);
       setError('');

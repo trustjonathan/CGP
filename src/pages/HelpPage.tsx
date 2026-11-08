@@ -89,17 +89,14 @@ export function HelpPage() {
           <div>
             <h2 id="privacy-title" className="font-display text-lg font-bold text-ink-900">Privacy at a glance</h2>
             <p className="mt-2 text-sm leading-6 text-ink-700">
-              Academic records are loaded from and saved to CGP&apos;s configured Supabase project while you are signed in and connected. The web app does not maintain an offline-first academic-data cache. Course documents and Vault contents are not part of academic-record sync. Use your own account, sign out on shared devices, and do not give anyone your password.
-            </p>
-            <p className="mt-3 text-xs text-ink-500">
-              Help content verified against app version {helpKnowledge.lastVerifiedAppVersion}.
+              Your academic records sync to your account when connected. Course documents and Vault contents stay separate. Sign out on shared devices.
             </p>
           </div>
         </div>
         <div className="mt-4 flex items-start gap-3 rounded-xl bg-ink-50 p-3">
           <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-primary-600" />
           <p className="text-sm leading-6 text-ink-700">
-            Loading a share link and importing its template require an internet connection in the web app.
+            Share links need an internet connection.
           </p>
         </div>
       </section>

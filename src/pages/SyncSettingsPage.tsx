@@ -9,7 +9,7 @@ import type { OnboardingLocalState, SetupReminderState } from '@/lib/onboarding'
 const defaultReminder: SetupReminderState = { lastShownAt: null, snoozedUntil: null, dismissals: 0, notificationsEnabled: false };
 
 function formatSyncTime(value: string | null) {
-  if (!value) return 'Not synced in this session';
+  if (!value) return 'Not synced yet';
   return new Date(value).toLocaleString(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -83,9 +83,6 @@ export function SyncSettingsPage() {
       <header className="rounded-2xl bg-gradient-to-r from-primary-600 to-primary-800 p-6 text-white shadow-lg">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary-100">Preferences</p>
         <h1 className="mt-1 font-display text-3xl font-black">Sync &amp; storage</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-primary-100">
-          The web app loads and saves your account records with Supabase. Internet access is required to open and update your workspace.
-        </p>
       </header>
 
       <section className="card space-y-5 p-5" aria-labelledby="sync-status-title">
@@ -93,9 +90,7 @@ export function SyncSettingsPage() {
           <div className="rounded-xl bg-primary-50 p-2 text-primary-700"><Cloud className="h-5 w-5" /></div>
           <div className="min-w-0 flex-1">
             <h2 id="sync-status-title" className="font-display text-xl font-bold text-ink-900">Account sync</h2>
-            <p className="mt-1 text-sm leading-6 text-ink-600">
-              Supabase remains authoritative. CGP also keeps an account-scoped local copy and queues edits so they can be saved silently when a connection returns.
-            </p>
+            <p className="mt-1 text-sm leading-6 text-ink-600">Your workspace syncs when connected.</p>
           </div>
         </div>
 
@@ -104,11 +99,11 @@ export function SyncSettingsPage() {
             <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">Connection</dt>
             <dd className={`mt-2 flex items-center gap-2 text-sm font-semibold ${online ? 'text-success-700' : 'text-error-700'}`}>
               {online ? <Wifi className="h-4 w-4" aria-hidden="true" /> : <WifiOff className="h-4 w-4" aria-hidden="true" />}
-              {online ? 'Online' : 'Offline — saved local changes will sync when reconnected'}
+              {online ? 'Online' : 'Offline — changes sync when connected'}
             </dd>
           </div>
           <div className="rounded-xl border border-ink-200 p-4">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">Last cloud sync</dt>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">Last synced</dt>
             <dd className="mt-2 flex items-center gap-2 text-sm font-semibold text-ink-800">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-primary-600" aria-hidden="true" />
               {formatSyncTime(lastSyncedAt)}
@@ -132,7 +127,7 @@ export function SyncSettingsPage() {
       <section className="card space-y-4 p-5" aria-labelledby="setup-preferences-title">
         <div>
           <h2 id="setup-preferences-title" className="font-display text-lg font-bold text-ink-900">Academic setup</h2>
-          <p className="mt-1 text-sm leading-6 text-ink-600">Review or update your university, course units, target, and results.</p>
+          <p className="mt-1 text-sm leading-6 text-ink-600">Update your academic details.</p>
         </div>
         <Link to="/onboarding?again=1" className="btn-secondary inline-flex items-center gap-2">Run setup again</Link>
         {desktopNotificationsAvailable && (
@@ -141,7 +136,7 @@ export function SyncSettingsPage() {
               <Bell className="mt-0.5 h-5 w-5 text-primary-600" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <h3 className="font-semibold text-ink-900">Local setup reminders</h3>
-                <p className="mt-1 text-sm leading-6 text-ink-600">Optional Windows notifications. CGP asks for notification permission only after you choose to enable them here.</p>
+                <p className="mt-1 text-sm leading-6 text-ink-600">Optional Windows notifications.</p>
                 <button type="button" className="btn-secondary mt-3" disabled={notificationBusy} onClick={() => void setNotificationPreference(!notificationsEnabled)}>
                   {notificationBusy ? 'Saving…' : notificationsEnabled ? 'Disable notifications' : 'Enable notifications'}
                 </button>

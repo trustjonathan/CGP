@@ -581,7 +581,7 @@ export function MultiVaultManager() {
     setBackupError('');
     setBackupStatus('');
     if (!user?.id || !supabase) {
-      setBackupError('Sign in and configure Supabase before enabling encrypted Vault backup.');
+      setBackupError('Sign in to enable encrypted backup.');
       return;
     }
     if (!window.multiVaultAPI) {
