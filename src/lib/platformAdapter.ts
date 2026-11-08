@@ -1,5 +1,6 @@
 export const platformAdapter = {
-  getAppImportLink(_token: string) {
+  getAppImportLink(token: string) {
+    void token;
     return null;
   },
 

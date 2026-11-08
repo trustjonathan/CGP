@@ -4,7 +4,12 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useAppData } from '@/lib/useAppData';
 import { platformAdapter } from '@/lib/platformAdapter';
 import { supabase } from '@/lib/supabase';
-import { getSharedSetupPrivacyIssues, isSharedSetupPayload, normalizeSharedText } from '@/lib/sharedSetup';
+import {
+  getSharedSetupPayloadIssues,
+  getSharedSetupPrivacyIssues,
+  isSharedSetupPayload,
+  normalizeSharedText,
+} from '@/lib/sharedSetup';
 
 type ExpiryDays = 1 | 7 | 30;
 
@@ -165,7 +170,12 @@ export function ShareSetupPage() {
       return;
     }
     if (!isSharedSetupPayload(payload)) {
-      setError('The selected setup details are incomplete or outside the supported sharing limits. Check the preview and try again.');
+      const issues = getSharedSetupPayloadIssues(payload);
+      console.error('CGP setup is not eligible for sharing.', issues);
+      const visibleIssues = issues.slice(0, 4)
+        .map(({ location, reason }) => `${location}: ${reason}`);
+      const remainingIssues = issues.length - visibleIssues.length;
+      setError(`Review the setup details: ${visibleIssues.join('; ')}${remainingIssues > 0 ? `; and ${remainingIssues} more issue(s)` : ''}.`);
       return;
     }
     setBusyAction('create');

@@ -122,49 +122,112 @@ function plainText(value: unknown, maximum: number) {
 }
 
 export function isSharedSetupPayload(value: unknown): value is SharedSetupPayload {
-  if (!isObject(value) || value.version !== 1 || !Array.isArray(value.semesters)
-    || value.semesters.length === 0 || value.semesters.length > 20) return false;
+  return getSharedSetupPayloadIssues(value).length === 0;
+}
+
+export function getSharedSetupPayloadIssues(value: unknown): SharedSetupPrivacyIssue[] {
+  const issues: SharedSetupPrivacyIssue[] = [];
+  const addIssue = (location: string, reason: string) => issues.push({ location, reason });
+  if (!isObject(value)) {
+    addIssue('Setup', 'has an invalid format');
+    return issues;
+  }
+  if (value.version !== 1) addIssue('Setup', 'has an unsupported format version');
+  if (!Array.isArray(value.semesters)) {
+    addIssue('Semesters', 'must be a list');
+    return issues;
+  }
+  if (value.semesters.length === 0) addIssue('Semesters', 'add at least one semester');
+  if (value.semesters.length > 20) addIssue('Semesters', 'limit is 20 semesters');
   let totalCourses = 0;
-  for (const semester of value.semesters) {
-    if (!isObject(semester) || !plainText(semester.academicYear, 20)
-      || !Number.isInteger(semester.semesterNumber) || Number(semester.semesterNumber) < 1
-      || Number(semester.semesterNumber) > 3 || !Array.isArray(semester.courses)
-      || semester.courses.length > 50) return false;
-    for (const course of semester.courses) {
+  value.semesters.forEach((semester, semesterIndex) => {
+    const semesterLabel = `Semester ${semesterIndex + 1}`;
+    if (!isObject(semester)) {
+      addIssue(semesterLabel, 'has an invalid format');
+      return;
+    }
+    if (!plainText(semester.academicYear, 20)) {
+      addIssue(`${semesterLabel} academic year`, 'must be plain text up to 20 characters');
+    }
+    if (!Number.isInteger(semester.semesterNumber) || Number(semester.semesterNumber) < 1 || Number(semester.semesterNumber) > 3) {
+      addIssue(`${semesterLabel} number`, 'must be between 1 and 3');
+    }
+    if (!Array.isArray(semester.courses)) {
+      addIssue(`${semesterLabel} courses`, 'must be a list');
+      return;
+    }
+    if (semester.courses.length > 50) addIssue(`${semesterLabel} courses`, 'limit is 50 courses');
+    semester.courses.forEach((course, courseIndex) => {
       totalCourses += 1;
-      if (!isObject(course) || !plainText(course.name, 120)
-        || (course.code !== undefined && course.code !== '' && !plainText(course.code, 40))
-        || !Number.isInteger(course.creditUnits) || Number(course.creditUnits) < 1
-        || Number(course.creditUnits) > 6
-        || (course.targetGradePoint !== undefined && (
-          typeof course.targetGradePoint !== 'number'
-          || !Number.isFinite(course.targetGradePoint)
-          || course.targetGradePoint < 0
-          || course.targetGradePoint > 5
-        ))) return false;
+      const courseLabel = `${semesterLabel}, course ${courseIndex + 1}`;
+      if (!isObject(course)) {
+        addIssue(courseLabel, 'has an invalid format');
+        return;
+      }
+      if (!plainText(course.name, 120)) addIssue(`${courseLabel} name`, 'must be plain text up to 120 characters');
+      if (course.code !== undefined && course.code !== '' && !plainText(course.code, 40)) {
+        addIssue(`${courseLabel} code`, 'must be plain text up to 40 characters');
+      }
+      if (!Number.isInteger(course.creditUnits) || Number(course.creditUnits) < 1 || Number(course.creditUnits) > 6) {
+        addIssue(`${courseLabel} credits`, 'must be a whole number from 1 to 6');
+      }
+      if (course.targetGradePoint !== undefined && (
+        typeof course.targetGradePoint !== 'number' || !Number.isFinite(course.targetGradePoint)
+        || course.targetGradePoint < 0 || course.targetGradePoint > 5
+      )) addIssue(`${courseLabel} target`, 'must be between 0 and 5');
       if (course.assessments !== undefined) {
-        if (!Array.isArray(course.assessments) || course.assessments.length > 12) return false;
-        if (!course.assessments.every((assessment) => isObject(assessment)
-          && plainText(assessment.name, 80)
-          && typeof assessment.weight === 'number' && Number.isFinite(assessment.weight)
-          && assessment.weight >= 0 && assessment.weight <= 100
-          && typeof assessment.total === 'number' && Number.isFinite(assessment.total)
-          && assessment.total > 0 && assessment.total <= 1_000_000
-          && Object.keys(assessment).every((key) => ['name', 'weight', 'total'].includes(key)))) return false;
+        if (!Array.isArray(course.assessments)) addIssue(`${courseLabel} assessments`, 'must be a list');
+        else {
+          if (course.assessments.length > 12) addIssue(`${courseLabel} assessments`, 'limit is 12 assessments');
+          course.assessments.forEach((assessment, assessmentIndex) => {
+            const label = `${courseLabel}, assessment ${assessmentIndex + 1}`;
+            if (!isObject(assessment)) {
+              addIssue(label, 'has an invalid format');
+              return;
+            }
+            if (!plainText(assessment.name, 80)) addIssue(`${label} name`, 'must be plain text up to 80 characters');
+            if (typeof assessment.weight !== 'number' || !Number.isFinite(assessment.weight)
+              || assessment.weight < 0 || assessment.weight > 100) addIssue(`${label} weight`, 'must be from 0 to 100');
+            if (typeof assessment.total !== 'number' || !Number.isFinite(assessment.total)
+              || assessment.total <= 0 || assessment.total > 1_000_000) addIssue(`${label} total`, 'must be greater than 0 and at most 1,000,000');
+            if (Object.keys(assessment).some((key) => !['name', 'weight', 'total'].includes(key))) {
+              addIssue(label, 'contains unsupported fields');
+            }
+          });
+        }
       }
       if (course.topics !== undefined) {
-        if (!Array.isArray(course.topics)) return false;
-        if (!course.topics.every((topic) => isObject(topic)
-          && plainText(topic.title, 120)
-          && Object.keys(topic).every((key) => key === 'title'))) return false;
+        if (!Array.isArray(course.topics)) addIssue(`${courseLabel} topics`, 'must be a list');
+        else course.topics.forEach((topic, topicIndex) => {
+          const label = `${courseLabel}, topic ${topicIndex + 1}`;
+          if (!isObject(topic)) {
+            addIssue(label, 'has an invalid format');
+            return;
+          }
+          if (!plainText(topic.title, 120)) addIssue(`${label} title`, 'must be plain text up to 120 characters');
+          if (Object.keys(topic).some((key) => key !== 'title')) addIssue(label, 'contains unsupported fields');
+        });
       }
       if (Object.keys(course).some((key) => ![
         'name', 'code', 'creditUnits', 'targetGradePoint', 'assessments', 'topics',
-      ].includes(key))) return false;
+      ].includes(key))) addIssue(courseLabel, 'contains unsupported fields');
+    });
+    if (Object.keys(semester).some((key) => !['academicYear', 'semesterNumber', 'courses'].includes(key))) {
+      addIssue(semesterLabel, 'contains unsupported fields');
     }
-    if (Object.keys(semester).some((key) => !['academicYear', 'semesterNumber', 'courses'].includes(key))) return false;
+  });
+  if (totalCourses > 200) addIssue('Courses', 'limit is 200 courses total');
+  if (Object.keys(value).some((key) => !['version', 'semesters'].includes(key))) {
+    addIssue('Setup', 'contains unsupported fields');
   }
-  return totalCourses <= 200 && Object.keys(value).every((key) => ['version', 'semesters'].includes(key));
+  try {
+    if (new TextEncoder().encode(JSON.stringify(value)).length > 262144) {
+      addIssue('Setup size', 'is larger than the 256 KB sharing limit');
+    }
+  } catch {
+    addIssue('Setup', 'contains data that cannot be shared');
+  }
+  return issues;
 }
 
 export function parseSharedSetupResult(value: unknown): SharedSetupPreview | null {

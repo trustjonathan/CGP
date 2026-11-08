@@ -72,6 +72,18 @@ test('a course can share more than 1000 topics', () => {
   );
 });
 
+test('invalid course data reports the exact field without echoing its value', () => {
+  const setup = payload();
+  setup.semesters[0].courses[0].creditUnits = 9;
+  const issues = sharedSetup.getSharedSetupPayloadIssues(setup);
+
+  assert.deepEqual(issues[0], {
+    location: 'Semester 1, course 1 credits',
+    reason: 'must be a whole number from 1 to 6',
+  });
+  assert.equal(JSON.stringify(issues).includes('Biology'), false);
+});
+
 test('privacy preflight identifies the unsafe detail without returning its value', () => {
   const setup = payload({
     assessmentName: 'Contact student@example.com',
