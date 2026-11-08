@@ -44,6 +44,22 @@ test('ordinary assessment and topic detail is eligible for sharing', () => {
   );
 });
 
+test('formatted text and control whitespace normalize to safe shareable plain text', () => {
+  assert.equal(
+    sharedSetup.normalizeSharedText(' <p>Topic one</p>\n<strong>Topic two</strong>\u0000 '),
+    'Topic one Topic two',
+  );
+  const setup = payload({ topicTitle: ' <p>Cell structure</p>\n\u0000' });
+  setup.semesters[0].courses[0].topics[0].title = sharedSetup.normalizeSharedText(
+    setup.semesters[0].courses[0].topics[0].title,
+  );
+  assert.equal(sharedSetup.isSharedSetupPayload(setup), true);
+  assert.deepEqual(
+    sharedSetup.getSharedSetupPrivacyIssues(setup, 'Biology setup', true, true),
+    [],
+  );
+});
+
 test('privacy preflight identifies the unsafe detail without returning its value', () => {
   const setup = payload({
     assessmentName: 'Contact student@example.com',

@@ -38,10 +38,21 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+export function normalizeSharedText(value: string) {
+  return value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/./gs, (character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code < 32 || (code >= 127 && code <= 159) ? ' ' : character;
+    })
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function getUnsafeTextReason(value: string): string | null {
-  if (/[<>]/.test(value) || Array.from(value).some((character) => {
+  if (/<[^>]*>/.test(value) || Array.from(value).some((character) => {
     const code = character.codePointAt(0) ?? 0;
-    return code < 32 || code === 127;
+    return code < 32 || (code >= 127 && code <= 159);
   })) return 'contains markup or unsupported control characters';
   if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value)) return 'appears to contain an email address';
   if (/\b\d{3}[- .()][0-9]{3,}[- .()][0-9]{3,}\b/.test(value)) return 'appears to contain a phone number';
@@ -103,10 +114,10 @@ function plainText(value: unknown, maximum: number) {
   return typeof value === 'string'
     && value.trim().length > 0
     && value.length <= maximum
-    && !/[<>]/.test(value)
+    && !/<[^>]*>/.test(value)
     && !Array.from(value).some((character) => {
       const code = character.codePointAt(0) ?? 0;
-      return code < 32 || code === 127;
+      return code < 32 || (code >= 127 && code <= 159);
     });
 }
 

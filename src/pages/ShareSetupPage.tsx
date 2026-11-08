@@ -4,7 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useAppData } from '@/lib/useAppData';
 import { platformAdapter } from '@/lib/platformAdapter';
 import { supabase } from '@/lib/supabase';
-import { getSharedSetupPrivacyIssues, isSharedSetupPayload } from '@/lib/sharedSetup';
+import { getSharedSetupPrivacyIssues, isSharedSetupPayload, normalizeSharedText } from '@/lib/sharedSetup';
 
 type ExpiryDays = 1 | 7 | 30;
 
@@ -59,17 +59,23 @@ function createTemplatePayload(
   return {
     version: 1,
     semesters: semesters.map((semester) => ({
-      academicYear: semester.academicYear,
+      academicYear: normalizeSharedText(semester.academicYear),
       semesterNumber: semester.semesterNumber,
       courses: courses.filter((course) => course.semesterId === semester.id).map((course) => ({
-        name: course.name,
-        ...(course.code ? { code: course.code } : {}),
+        name: normalizeSharedText(course.name),
+        ...(course.code ? { code: normalizeSharedText(course.code) } : {}),
         creditUnits: course.creditUnits,
         targetGradePoint: course.targetGradePoint,
         ...(includeAssessments ? {
-          assessments: (course.assessments ?? []).map(({ name, weight, total }) => ({ name, weight, total })),
+          assessments: (course.assessments ?? []).map(({ name, weight, total }) => ({
+            name: normalizeSharedText(name),
+            weight,
+            total,
+          })),
         } : {}),
-        ...(includeTopics ? { topics: (course.topics ?? []).map(({ title }) => ({ title })) } : {}),
+        ...(includeTopics ? {
+          topics: (course.topics ?? []).map(({ title }) => ({ title: normalizeSharedText(title) })),
+        } : {}),
       })),
     })),
   };
