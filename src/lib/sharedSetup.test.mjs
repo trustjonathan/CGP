@@ -60,6 +60,18 @@ test('formatted text and control whitespace normalize to safe shareable plain te
   );
 });
 
+test('a course can share more than 1000 topics', () => {
+  const setup = payload();
+  setup.semesters[0].courses[0].topics = Array.from({ length: 1200 }, (_, index) => ({
+    title: `Topic ${index + 1}`,
+  }));
+  assert.equal(sharedSetup.isSharedSetupPayload(setup), true);
+  assert.deepEqual(
+    sharedSetup.getSharedSetupPrivacyIssues(setup, 'Biology setup', false, true),
+    [],
+  );
+});
+
 test('privacy preflight identifies the unsafe detail without returning its value', () => {
   const setup = payload({
     assessmentName: 'Contact student@example.com',

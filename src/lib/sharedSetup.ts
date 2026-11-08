@@ -153,7 +153,7 @@ export function isSharedSetupPayload(value: unknown): value is SharedSetupPayloa
           && Object.keys(assessment).every((key) => ['name', 'weight', 'total'].includes(key)))) return false;
       }
       if (course.topics !== undefined) {
-        if (!Array.isArray(course.topics) || course.topics.length > 50) return false;
+        if (!Array.isArray(course.topics)) return false;
         if (!course.topics.every((topic) => isObject(topic)
           && plainText(topic.title, 120)
           && Object.keys(topic).every((key) => key === 'title'))) return false;
