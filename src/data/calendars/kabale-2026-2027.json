@@ -1,0 +1,222 @@
+{
+  "university": "Kabale University",
+  "academicYear": "2026/2027",
+  "audience": "regular-undergraduate",
+  "source": "Kabale University Academic Calendar 2026/2027",
+  "lastVerified": "2026-11-09",
+  "notes": [
+    "Dates copied from the official calendar. Source typos corrected: '31st Dec 2027' is 2026.",
+    "Meetings/committees and in-service teacher sessions are intentionally excluded.",
+    "Week 0 starts on weekStart (Monday). Use calendar week numbers, not 15-week arithmetic."
+  ],
+  "semesters": [
+    {
+      "number": 1,
+      "start": "2026-08-08",
+      "end": "2026-12-18",
+      "weekStart": "2026-08-03",
+      "milestones": [
+        {
+          "id": "s1-report-freshers",
+          "label": "Freshers report",
+          "date": "2026-08-08",
+          "type": "admin"
+        },
+        {
+          "id": "s1-orientation",
+          "label": "Freshers orientation",
+          "date": "2026-08-10",
+          "endDate": "2026-08-15",
+          "type": "admin"
+        },
+        {
+          "id": "s1-report-continuing",
+          "label": "Continuing students report",
+          "date": "2026-08-15",
+          "type": "admin"
+        },
+        {
+          "id": "s1-lectures-begin",
+          "label": "Lectures begin",
+          "date": "2026-08-17",
+          "type": "teaching"
+        },
+        {
+          "id": "s1-cw1",
+          "label": "Coursework task 1",
+          "date": "2026-08-28",
+          "type": "coursework"
+        },
+        {
+          "id": "s1-cw2",
+          "label": "Coursework task 2",
+          "date": "2026-09-25",
+          "type": "coursework"
+        },
+        {
+          "id": "s1-cw3",
+          "label": "Coursework task 3",
+          "date": "2026-10-16",
+          "type": "coursework"
+        },
+        {
+          "id": "s1-cw-results",
+          "label": "Coursework results deadline",
+          "date": "2026-11-06",
+          "type": "deadline",
+          "note": "Appears to be a staff deadline; coursework results should be available around this date."
+        },
+        {
+          "id": "s1-evaluation",
+          "label": "Student evaluation of staff and programmes",
+          "date": "2026-11-06",
+          "endDate": "2026-11-13",
+          "type": "admin"
+        },
+        {
+          "id": "s1-exams",
+          "label": "Semester exams",
+          "date": "2026-11-27",
+          "endDate": "2026-12-11",
+          "type": "exam"
+        },
+        {
+          "id": "s1-break",
+          "label": "Christmas break starts",
+          "date": "2026-12-18",
+          "type": "break"
+        },
+        {
+          "id": "s1-marking",
+          "label": "Central examination marking",
+          "date": "2027-01-04",
+          "endDate": "2027-01-16",
+          "type": "results"
+        },
+        {
+          "id": "s1-boards",
+          "label": "Faculty boards consider results",
+          "date": "2027-01-19",
+          "type": "results"
+        },
+        {
+          "id": "s1-results-registrar",
+          "label": "Results submitted to Registrar",
+          "date": "2027-01-26",
+          "type": "results"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "start": "2027-01-30",
+      "end": "2027-05-30",
+      "weekStart": "2027-01-25",
+      "milestones": [
+        {
+          "id": "s2-report",
+          "label": "Regular students report",
+          "date": "2027-01-30",
+          "type": "admin"
+        },
+        {
+          "id": "s2-lectures-begin",
+          "label": "Lectures begin",
+          "date": "2027-02-01",
+          "type": "teaching"
+        },
+        {
+          "id": "s2-cw1",
+          "label": "Coursework task 1",
+          "date": "2027-02-04",
+          "type": "coursework"
+        },
+        {
+          "id": "s2-cw2",
+          "label": "Coursework task 2",
+          "date": "2027-03-03",
+          "type": "coursework"
+        },
+        {
+          "id": "s2-cw3",
+          "label": "Coursework task 3",
+          "date": "2027-03-25",
+          "type": "coursework"
+        },
+        {
+          "id": "s2-easter",
+          "label": "Easter break",
+          "date": "2027-03-26",
+          "endDate": "2027-03-29",
+          "type": "break"
+        },
+        {
+          "id": "s2-evaluation",
+          "label": "Student evaluation of staff and programmes",
+          "date": "2027-04-29",
+          "endDate": "2027-05-07",
+          "type": "admin"
+        },
+        {
+          "id": "s2-cw-results",
+          "label": "Coursework results deadline",
+          "date": "2027-05-06",
+          "type": "deadline",
+          "note": "Appears to be a staff deadline; coursework results should be available around this date."
+        },
+        {
+          "id": "s2-exams",
+          "label": "Semester exams",
+          "date": "2027-05-14",
+          "endDate": "2027-05-28",
+          "type": "exam"
+        },
+        {
+          "id": "s2-holidays",
+          "label": "Regular students begin holidays",
+          "date": "2027-05-28",
+          "type": "break"
+        },
+        {
+          "id": "s2-marking",
+          "label": "Central examination marking",
+          "date": "2027-05-31",
+          "endDate": "2027-06-18",
+          "type": "results"
+        },
+        {
+          "id": "s2-boards",
+          "label": "Faculty boards consider results",
+          "date": "2027-06-22",
+          "type": "results"
+        },
+        {
+          "id": "s2-results-registrar",
+          "label": "Results submitted to Registrar",
+          "date": "2027-06-25",
+          "type": "results"
+        }
+      ]
+    }
+  ],
+  "publicHolidays": [
+    "2026-10-09",
+    "2026-12-25",
+    "2027-01-01",
+    "2027-01-26",
+    "2027-02-16",
+    "2027-03-08",
+    "2027-03-09",
+    "2027-03-28",
+    "2027-05-01",
+    "2027-05-16",
+    "2027-06-03",
+    "2027-06-09"
+  ],
+  "ceremonies": [
+    {
+      "label": "11th Graduation",
+      "date": "2026-10-30"
+    }
+  ]
+}

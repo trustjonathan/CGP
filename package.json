@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "vitest run src/lib/gradingConfig.test.ts src/lib/forecast.test.ts && node --test src/lib/sharedSetup.test.mjs src/lib/vaultBackup.test.mjs src/lib/onboardingStats/index.test.mjs",
+    "test": "vitest run src/lib/gradingConfig.test.ts src/lib/forecast.test.ts src/lib/academicCalendar.test.ts && node --test src/lib/sharedSetup.test.mjs src/lib/vaultBackup.test.mjs src/lib/onboardingStats/index.test.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "docker:build": "docker build --tag cgpa-tracker .",
@@ -52,6 +52,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "canvas-confetti": "^1.9.4",
+    "date-fns": "^4.4.0",
     "lucide-react": "^0.446.0",
     "motion": "^14.10.1",
     "qrcode.react": "^4.2.0",
