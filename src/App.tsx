@@ -22,6 +22,7 @@ import { OnboardingPage } from '@/pages/OnboardingPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { SetupsPage } from '@/pages/SetupsPage';
 import { ImportSetupPage } from '@/pages/ImportSetupPage';
+import { DocumentsPage } from '@/pages/DocumentsPage';
 
 function App() {
   return (
@@ -147,6 +148,8 @@ function CloudWorkspace() {
           <Route path="/course/:id" element={<CourseDetailPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/simulator" element={<SimulatorPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/documents/:id" element={<DocumentsPage />} />
           <Route path="/vault" element={<MultiVaultManager />} />
           <Route path="/setups" element={<SetupsPage />} />
           <Route path="/share-setup" element={<Navigate to="/setups?tab=share" replace />} />
