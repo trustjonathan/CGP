@@ -44,6 +44,11 @@ import { useAuth } from '@/contexts/useAuth';
 import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
 import { getSetupCompleteness, shouldShowSetupReminder, type OnboardingLocalState, type SetupReminderState } from '@/lib/onboarding';
 import { legacyTargetPromptWasDismissed, targetSummary } from '@/lib/gradingConfig';
+import {
+  getLocalCalendarDate,
+  getMilestoneDaysRemaining,
+  getUpcomingCalendarMilestones,
+} from '@/features/calendar/calendarModel';
 
 const emptyReminder: SetupReminderState = { lastShownAt: null, snoozedUntil: null, dismissals: 0, notificationsEnabled: false };
 
@@ -56,6 +61,8 @@ export function DashboardPage() {
   const [reminderError, setReminderError] = useState('');
   const completeness = getSetupCompleteness(data);
   const showSetupReminder = reminderReady && Boolean(completeness.nextStep) && shouldShowSetupReminder(reminder);
+  const todayCalendarDate = getLocalCalendarDate();
+  const nextAcademicMilestone = getUpcomingCalendarMilestones(todayCalendarDate, 1)[0] ?? null;
 
   useEffect(() => {
     let active = true;
@@ -352,15 +359,22 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <section className="card flex items-start gap-3 p-4" aria-labelledby="coming-up-title">
+          <Link to="/calendar" className="card flex items-center gap-3 p-4 transition-colors hover:border-primary-300 hover:bg-primary-50/40" aria-labelledby="today-calendar-title">
             <div className="rounded-xl bg-primary-50 p-2 text-primary-700">
               <CalendarDays className="h-5 w-5" aria-hidden="true" />
             </div>
-            <div>
-              <h2 id="coming-up-title" className="font-display font-semibold text-ink-900">Coming up</h2>
-              <p className="mt-1 text-sm text-ink-500">No upcoming academic dates are saved yet.</p>
+            <div className="min-w-0 flex-1">
+              <h2 id="today-calendar-title" className="font-display font-semibold text-ink-900">Today</h2>
+              <p className="mt-1 truncate text-sm text-ink-500">
+                {nextAcademicMilestone
+                  ? `${nextAcademicMilestone.label} · ${getMilestoneDaysRemaining(nextAcademicMilestone.date, todayCalendarDate) === 0
+                    ? 'today'
+                    : `in ${getMilestoneDaysRemaining(nextAcademicMilestone.date, todayCalendarDate)} days`}`
+                  : 'View the academic calendar'}
+              </p>
             </div>
-          </section>
+            <ArrowRight className="h-4 w-4 shrink-0 text-primary-700" aria-hidden="true" />
+          </Link>
 
           {courseForecasts.length > 0 && (
             <section className="card p-5" aria-labelledby="course-forecasts-heading">

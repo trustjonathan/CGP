@@ -33,6 +33,7 @@ export function SemestersPage() {
     deleteSemester,
     updateSemester,
     addCourse,
+    updateCourse,
     deleteCourse,
     addTopic,
     updateTopic,
@@ -66,6 +67,7 @@ export function SemestersPage() {
   const [courseCode, setCourseCode] = useState('');
   const [courseCU, setCourseCU] = useState(3);
   const [courseTargetGP, setCourseTargetGP] = useState(() => defaultCourseTarget(data.settings));
+  const [courseUsesGlobalTarget, setCourseUsesGlobalTarget] = useState(true);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -86,11 +88,13 @@ export function SemestersPage() {
 
   const handleAddCourse = () => {
     if (!courseName.trim() || !courseModalSemId) return;
-    addCourse(courseModalSemId, courseName.trim(), courseCode.trim(), courseCU, courseTargetGP);
+    const courseId = addCourse(courseModalSemId, courseName.trim(), courseCode.trim(), courseCU, courseTargetGP);
+    updateCourse(courseId, { targetUsesGlobal: courseUsesGlobalTarget });
     setCourseName('');
     setCourseCode('');
     setCourseCU(3);
     setCourseTargetGP(defaultCourseTarget(data.settings));
+    setCourseUsesGlobalTarget(true);
     setCourseModalSemId(null);
   };
 
@@ -227,7 +231,19 @@ export function SemestersPage() {
             </div>
             <div>
               <label className="label">Target Grade Point</label>
-              <select value={courseTargetGP} onChange={(e) => setCourseTargetGP(parseFloat(e.target.value))} className="input">
+              <select
+                value={courseUsesGlobalTarget ? 'global' : String(courseTargetGP)}
+                onChange={(event) => {
+                  if (event.target.value === 'global') {
+                    setCourseUsesGlobalTarget(true);
+                  } else {
+                    setCourseUsesGlobalTarget(false);
+                    setCourseTargetGP(parseFloat(event.target.value));
+                  }
+                }}
+                className="input"
+              >
+                <option value="global">Use global target ({data.settings.targetCGPA.toFixed(2)} GP)</option>
                 {GRADE_SCALE.filter((grade) => grade.label !== 'F').map((grade) => (
                   <option key={grade.label} value={grade.gp}>{grade.gp.toFixed(1)} ({grade.label})</option>
                 ))}

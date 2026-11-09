@@ -27,6 +27,7 @@ export interface CourseUnit {
   code: string;
   creditUnits: number;
   targetGradePoint: number;
+  targetUsesGlobal?: boolean;
   semesterId: string;
   assessments: Assessment[];
   topics: CourseTopic[];
@@ -41,13 +42,24 @@ export interface Semester {
   createdAt: number;
 }
 
+export interface ProgrammeAnchor {
+  academicYear: string;
+  year: number;
+  semester: number;
+  programDurationYears: number;
+}
+
 export interface AppSettings {
   targetCGPA: number;
+  customTargetCGPA?: number | null;
   targetSet?: boolean;
   profileName?: string;
   university?: string;
   programme?: string;
   yearOfStudy?: number;
+  programmeAnchor?: ProgrammeAnchor | null;
+  programmeJoinedAcademicYear?: string | null;
+  programmeFinishDateOverride?: string | null;
   currentSemester?: number;
   academicYear?: string;
   onboardingCompleted?: boolean;

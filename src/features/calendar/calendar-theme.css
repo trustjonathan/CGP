@@ -1,0 +1,47 @@
+.calendar-page {
+  --bg: #f8fafc;
+  --dot: rgba(37, 99, 235, 0.2);
+  --glow: rgba(59, 130, 246, 0.16);
+  background-color: var(--bg);
+}
+
+.calendar-background {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.calendar-dot-layer {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--dot) 1.2px, transparent 1.3px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 76%);
+  opacity: 0.7;
+}
+
+.calendar-glow-layer {
+  position: absolute;
+  top: -12rem;
+  left: 50%;
+  width: min(58rem, 120vw);
+  height: 34rem;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, var(--glow), transparent 68%);
+  filter: blur(28px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .calendar-page {
+    --bg: #020617;
+    --dot: rgba(96, 165, 250, 0.2);
+    --glow: rgba(37, 99, 235, 0.2);
+  }
+}
+
+@media (max-width: 479px) {
+  .calendar-dot-layer {
+    opacity: 0.4;
+  }
+}

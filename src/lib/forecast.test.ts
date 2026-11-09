@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Assessment, CourseUnit } from './types';
-import { calculateCourseForecast, runWhatIf } from './forecast';
+import { calculateCourseForecast, getGapToTarget, runWhatIf } from './forecast';
 
 function makeCourse(assessments: Assessment[]): CourseUnit {
   return {
@@ -27,6 +27,10 @@ function assessment(
 }
 
 describe('course forecast', () => {
+  it('treats a CGPA equal to the exact custom target as on target', () => {
+    expect(getGapToTarget(4.4, 4.4)).toEqual({ gap: 0, status: 'on-track' });
+  });
+
   it('calculates needed points against remaining weight', () => {
     const course = makeCourse([
       assessment('coursework', 40, 39, 40),

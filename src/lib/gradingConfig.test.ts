@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { GRADE_SCALE, getGradePoint, minPercentForGradePoint } from './types';
 import {
   customTargetPercentForSettings,
+  customTargetCGPAForSettings,
   gradePointForTargetChoice,
+  targetChoiceForGradePoint,
+  targetLabelForCourse,
   targetChoiceForSettings,
+  targetSummary,
   targetPercentForCourse,
   targetPercentForSettings,
   type ExtendedAppSettings,
@@ -45,6 +49,30 @@ describe('grading targets', () => {
     expect(customTargetPercentForSettings(settings)).toBe(68.3);
     expect(targetPercentForSettings(settings)).toBe(68.3);
     expect(targetPercentForCourse(course(settings.targetCGPA), settings)).toBe(68.3);
-    expect(targetPercentForCourse(course(4), settings)).toBe(70);
+    expect(targetPercentForCourse({ ...course(4), targetUsesGlobal: false }, settings)).toBe(70);
+  });
+
+  it('retains an exact custom CGPA and uses its band for course forecasts', () => {
+    const settings: ExtendedAppSettings = {
+      targetCGPA: 4.4,
+      customTargetCGPA: 4.4,
+      targetChoice: 'custom-gp',
+    };
+
+    expect(customTargetCGPAForSettings(settings)).toBe(4.4);
+    expect(gradePointForTargetChoice('custom-gp', null, 4.4)).toBe(4.4);
+    expect(targetPercentForSettings(settings)).toBe(75);
+    expect(targetPercentForCourse(course(5), settings)).toBe(75);
+    expect(targetLabelForCourse(course(5), settings)).toBe('Custom 4.40 GP');
+    expect(targetSummary(settings)).toBe('Custom 4.40 GP');
+    expect(targetChoiceForGradePoint(4.4)).toBe('custom-gp');
+  });
+
+  it('treats legacy targets as global unless a course override is explicit', () => {
+    const settings: ExtendedAppSettings = { targetCGPA: 4.4, targetChoice: 'custom-gp' };
+
+    expect(targetPercentForCourse(course(5), settings)).toBe(75);
+    expect(targetPercentForCourse({ ...course(5), targetUsesGlobal: false }, settings)).toBe(80);
+    expect(targetLabelForCourse({ ...course(5), targetUsesGlobal: false }, settings)).toBe('A (5.00 GP)');
   });
 });

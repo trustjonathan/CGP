@@ -276,6 +276,7 @@ export function ImportSetupPage({ onImported }: { onImported?: () => void } = {}
             code: templateCourse.code?.trim() ?? '',
             creditUnits: templateCourse.creditUnits,
             targetGradePoint: defaultCourseTarget(localData.settings),
+            targetUsesGlobal: true,
             semesterId: destinationSemester.id,
             assessments,
             topics,

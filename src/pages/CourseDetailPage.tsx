@@ -24,14 +24,19 @@ import {
   getGradePoint,
   getGradeColor,
   GRADE_SCALE,
-  gradeLabelForGradePoint,
   MAX_GRADE_POINT,
   minPercentForGradePoint,
   type Assessment,
   type CourseDocument,
 } from '@/lib/types';
 import { calculateCourseForecast, formatPoints } from '@/lib/forecast';
-import { COURSEWORK_EXAM_REQUIREMENT, gradePointForTargetChoice, targetPercentForCourse } from '@/lib/gradingConfig';
+import {
+  COURSEWORK_EXAM_REQUIREMENT,
+  gradePointForTargetChoice,
+  targetLabelForCourse,
+  targetPercentForCourse,
+  targetSummary,
+} from '@/lib/gradingConfig';
 import { Modal } from '@/components/ui/Modal';
 import { ProgressBar, GradeBadge, EmptyState } from '@/components/ui';
 
@@ -68,6 +73,7 @@ export function CourseDetailPage() {
   const [cCode, setCCode] = useState('');
   const [cCU, setCCU] = useState(3);
   const [cTargetGP, setCTargetGP] = useState(MAX_GRADE_POINT);
+  const [cTargetUsesGlobal, setCTargetUsesGlobal] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [topicInput, setTopicInput] = useState('');
 
@@ -98,11 +104,9 @@ export function CourseDetailPage() {
     ? (completedTopicCount / course.topics.length) * 100
     : 0;
   const targetPercent = targetPercentForCourse(course, data.settings);
-  const targetLabel = targetPercent === minPercentForGradePoint(course.targetGradePoint)
-    ? `${gradeLabelForGradePoint(course.targetGradePoint)} (${course.targetGradePoint.toFixed(1)} GP)`
-    : `Custom ${targetPercent}%`;
+  const targetLabel = targetLabelForCourse(course, data.settings);
   const required = calculateCourseForecast(course, targetPercent);
-  const isPassTarget = course.targetGradePoint === gradePointForTargetChoice('pass');
+  const isPassTarget = targetPercent === minPercentForGradePoint(gradePointForTargetChoice('pass') ?? 0);
 
   const openAddAssess = () => {
     setEditAssess(null);
@@ -135,6 +139,7 @@ export function CourseDetailPage() {
     setCCode(course.code);
     setCCU(course.creditUnits);
     setCTargetGP(course.targetGradePoint);
+    setCTargetUsesGlobal(course.targetUsesGlobal !== false);
     setEditCourseOpen(true);
   };
 
@@ -145,6 +150,7 @@ export function CourseDetailPage() {
       code: cCode.trim(),
       creditUnits: cCU,
       targetGradePoint: cTargetGP,
+      targetUsesGlobal: cTargetUsesGlobal,
     });
     setEditCourseOpen(false);
   };
@@ -648,11 +654,24 @@ export function CourseDetailPage() {
           </div>
           <div>
             <label className="label">Target grade</label>
-            <select value={cTargetGP} onChange={(event) => setCTargetGP(Number(event.target.value))} className="input">
+            <select
+              value={cTargetUsesGlobal ? 'global' : String(cTargetGP)}
+              onChange={(event) => {
+                if (event.target.value === 'global') {
+                  setCTargetUsesGlobal(true);
+                } else {
+                  setCTargetUsesGlobal(false);
+                  setCTargetGP(Number(event.target.value));
+                }
+              }}
+              className="input"
+            >
+              <option value="global">Use global target ({targetSummary(data.settings)})</option>
               {GRADE_SCALE.filter((grade) => grade.label !== 'F').map((grade) => (
                 <option key={grade.label} value={grade.gp}>{grade.label} · {grade.gp.toFixed(1)} GP ({grade.minPercent}%)</option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-ink-500">Existing courses without an individual override follow the global target.</p>
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <button onClick={() => setEditCourseOpen(false)} className="btn-secondary">Cancel</button>

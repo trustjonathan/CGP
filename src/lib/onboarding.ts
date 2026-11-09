@@ -14,12 +14,15 @@ export interface OnboardingDraft {
   otherUniversity: string;
   programme: string;
   yearOfStudy: number | null;
+  programDurationYears?: number | null;
+  programmeJoinedAcademicYear?: string;
   currentSemester: number;
   academicYear: string;
   courses: OnboardingCourseDraft[];
   targetCGPA: number | null;
   targetChoice?: TargetChoice;
   customTargetPercent?: number | null;
+  customTargetCGPA?: number | null;
   scores: Record<string, number | null>;
   completed: boolean;
 }
@@ -60,12 +63,15 @@ export function createOnboardingDraft(now = Date.now()): OnboardingDraft {
     otherUniversity: '',
     programme: '',
     yearOfStudy: null,
+    programDurationYears: null,
+    programmeJoinedAcademicYear: '',
     currentSemester: 1,
     academicYear: getDefaultAcademicYear(new Date(now)),
     courses: [],
     targetCGPA: null,
     targetChoice: 'A',
     customTargetPercent: null,
+    customTargetCGPA: null,
     scores: {},
     completed: false,
   };

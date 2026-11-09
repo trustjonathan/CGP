@@ -23,6 +23,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { SetupsPage } from '@/pages/SetupsPage';
 import { ImportSetupPage } from '@/pages/ImportSetupPage';
 import { DocumentsPage } from '@/pages/DocumentsPage';
+import { CalendarPage } from '@/pages/CalendarPage';
 
 function App() {
   return (
@@ -148,6 +149,7 @@ function CloudWorkspace() {
           <Route path="/course/:id" element={<CourseDetailPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/simulator" element={<SimulatorPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/documents/:id" element={<DocumentsPage />} />
           <Route path="/vault" element={<MultiVaultManager />} />

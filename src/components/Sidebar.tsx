@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   CalendarDays,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   CircleHelp,
@@ -33,13 +34,14 @@ const APP_VERSION = packageJson.version;
 
 const primaryItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/semesters', label: 'Semesters & Courses', icon: CalendarDays },
+  { to: '/semesters', label: 'Semesters & Courses', icon: BookOpen },
   { to: '/analytics', label: 'Analytics', icon: TrendingUp },
   { to: '/simulator', label: 'What-If Simulator', icon: SlidersHorizontal },
-  { to: '/documents', label: 'Rules & Documents', icon: FileText },
+  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
 ];
 
 const moreItems = [
+  { to: '/documents', label: 'Rules & Documents', icon: FileText },
   { to: '/vault', label: 'Vault', icon: ShieldCheck },
   { to: '/setups', label: 'Setups', icon: Share2 },
   { to: '/settings/sync', label: 'Sync & storage', icon: RefreshCw },
@@ -108,7 +110,7 @@ export function Sidebar() {
   const { user, signOut } = useAuth();
   const profileLabel = data.settings.profileName || 'Your profile';
   const targetLabel = targetSummary(data.settings);
-  const moreIsActive = moreItems.some(({ to }) => location.pathname.startsWith(to))
+  const moreIsActive = [...moreItems, ...primaryItems.slice(4)].some(({ to }) => location.pathname.startsWith(to))
     || location.pathname.startsWith('/share-setup')
     || location.pathname.startsWith('/import');
   const syncLabel = syncError

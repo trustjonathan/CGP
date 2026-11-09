@@ -29,6 +29,12 @@ import targetCgpaIllustration from '@/assets/onboarding/target-cgpa.svg';
 import resultsIllustration from '@/assets/onboarding/results.svg';
 import finishIllustration from '@/assets/onboarding/finish.svg';
 import { ImportSetupPage } from '@/pages/ImportSetupPage';
+import {
+  deriveJoinedAcademicYear,
+  getActiveAcademicYear,
+  getLocalCalendarDate,
+  validateProgrammeAnchor,
+} from '@/features/calendar/calendarModel';
 import { useAppData } from '@/lib/useAppData';
 import { useAuth } from '@/contexts/useAuth';
 import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
@@ -48,6 +54,7 @@ import {
   type Semester,
 } from '@/lib/types';
 import {
+  customTargetCGPAForSettings,
   customTargetPercentForSettings,
   gradePointForTargetChoice,
   targetChoiceForSettings,
@@ -198,20 +205,34 @@ function isTargetChoice(value: unknown): value is TargetChoice {
 function draftFromSettings(data: ReturnType<typeof useAppData>['data']) {
   const saved = data.settings.onboardingDraft;
   const savedCustomTarget = customTargetPercentForSettings(data.settings);
+  const savedCustomCGPA = customTargetCGPAForSettings(data.settings);
   if (isOnboardingDraft(saved) && !saved.completed) {
     const targetCGPA = saved.targetCGPA ?? data.settings.targetCGPA;
     const savedCustom = saved.customTargetPercent ?? savedCustomTarget;
+    const savedExactCGPA = saved.customTargetCGPA ?? savedCustomCGPA;
     const targetChoice = isTargetChoice(saved.targetChoice)
       ? saved.targetChoice
-      : savedCustom !== null
-        ? 'custom'
+      : savedExactCGPA !== null
+        ? 'custom-gp'
+        : savedCustom !== null
+          ? 'custom'
         : saved.targetCGPA === null
           ? 'A'
           : targetChoiceForGradePoint(targetCGPA);
     return {
       ...saved,
+      programDurationYears: saved.programDurationYears === undefined
+        ? data.settings.programmeAnchor?.programDurationYears ?? null
+        : saved.programDurationYears,
+      programmeJoinedAcademicYear: saved.programmeJoinedAcademicYear === undefined
+        ? data.settings.programmeJoinedAcademicYear ?? ''
+        : saved.programmeJoinedAcademicYear,
+      yearOfStudy: saved.yearOfStudy ?? data.settings.programmeAnchor?.year ?? null,
+      currentSemester: saved.currentSemester ?? data.settings.programmeAnchor?.semester ?? 1,
       targetCGPA,
       targetChoice,
+      customTargetCGPA: savedExactCGPA
+        ?? (targetChoice === 'custom-gp' && targetCGPA !== null ? targetCGPA : null),
       customTargetPercent: savedCustom
         ?? (targetChoice === 'custom' && saved.targetCGPA !== null && saved.targetCGPA !== undefined
           ? minPercentForGradePoint(saved.targetCGPA)
@@ -219,18 +240,36 @@ function draftFromSettings(data: ReturnType<typeof useAppData>['data']) {
     };
   }
   const targetCGPA = data.settings.targetCGPA;
+  const targetChoice = savedCustomCGPA !== null
+    ? 'custom-gp'
+    : savedCustomTarget !== null ? 'custom' : targetChoiceForSettings(data.settings);
   return {
     ...createOnboardingDraft(),
     university: data.settings.onboardingCompleted ? data.settings.university ?? '' : '',
     programme: data.settings.programme ?? '',
-    yearOfStudy: data.settings.yearOfStudy ?? null,
-    currentSemester: data.settings.currentSemester ?? 1,
+    yearOfStudy: data.settings.programmeAnchor?.year ?? data.settings.yearOfStudy ?? null,
+    programDurationYears: data.settings.programmeAnchor?.programDurationYears ?? null,
+    programmeJoinedAcademicYear: data.settings.programmeJoinedAcademicYear ?? '',
+    currentSemester: data.settings.programmeAnchor?.semester ?? data.settings.currentSemester ?? 1,
     academicYear: data.settings.academicYear ?? createOnboardingDraft().academicYear,
     targetCGPA,
-    targetChoice: savedCustomTarget !== null ? 'custom' : targetChoiceForSettings(data.settings),
+    targetChoice,
+    customTargetCGPA: savedCustomCGPA
+      ?? (targetChoice === 'custom-gp' ? targetCGPA : null),
     customTargetPercent: savedCustomTarget
       ?? (targetChoiceForGradePoint(targetCGPA) === 'custom' ? 0 : null),
   };
+}
+
+function targetInputForDraft(draft: OnboardingDraft): string {
+  if (draft.targetChoice === 'custom-gp') {
+    return draft.customTargetCGPA === null || draft.customTargetCGPA === undefined
+      ? ''
+      : String(draft.customTargetCGPA);
+  }
+  return draft.customTargetPercent === null || draft.customTargetPercent === undefined
+    ? ''
+    : String(draft.customTargetPercent);
 }
 
 function parseScoreInput(value: string) {
@@ -313,10 +352,7 @@ export function OnboardingPage() {
   const [saveError, setSaveError] = useState('');
   const [pasteCourses, setPasteCourses] = useState('');
   const [finishError, setFinishError] = useState('');
-  const [targetInput, setTargetInput] = useState(() =>
-    draft.customTargetPercent === null || draft.customTargetPercent === undefined
-      ? ''
-      : String(draft.customTargetPercent));
+  const [targetInput, setTargetInput] = useState(() => targetInputForDraft(draft));
   const [baselineInputs, setBaselineInputs] = useState({
     cgpa: '',
     creditsEarned: '',
@@ -361,9 +397,7 @@ export function OnboardingPage() {
         nextDraft = draftFromSettings(initialData.current);
       }
       setDraft(nextDraft);
-      setTargetInput(nextDraft.customTargetPercent === null || nextDraft.customTargetPercent === undefined
-        ? ''
-        : String(nextDraft.customTargetPercent));
+      setTargetInput(targetInputForDraft(nextDraft));
       setPreviewScores({ ...nextDraft.scores });
       setScoreInputs(scoresToInputs(nextDraft.scores));
       setMetrics(validMetrics(saved?.metrics));
@@ -472,10 +506,11 @@ export function OnboardingPage() {
   const currentCgpa = academicTotalsPreview.cgpa;
   const maximumGradePoint = maximumGradePointForScale();
   const parsedTargetInput = Number(targetInput);
+  const targetInputMaximum = draft.targetChoice === 'custom-gp' ? maximumGradePoint : 100;
   const targetInputIsValid = targetInput.trim() !== ''
     && Number.isFinite(parsedTargetInput)
     && parsedTargetInput >= 0
-    && parsedTargetInput <= 100;
+    && parsedTargetInput <= targetInputMaximum;
   const previewTarget = draft.targetCGPA;
   const weights = courseWeights(previewCourses);
   const contributions = courseContributions(currentSemesterCourses);
@@ -592,14 +627,41 @@ export function OnboardingPage() {
   const finish = () => {
     setFinishError('');
     try {
+      const anchorValidation = validateProgrammeAnchor(draft.yearOfStudy, draft.programDurationYears);
+      if (anchorValidation.severity === 'error') {
+        setFinishError(anchorValidation.message ?? 'Enter valid programme details.');
+        return;
+      }
+      if (typeof draft.yearOfStudy !== 'number' || typeof draft.programDurationYears !== 'number') {
+        setFinishError('Enter your current year of study and programme duration.');
+        return;
+      }
+      if (!Number.isInteger(draft.currentSemester) || draft.currentSemester < 1 || draft.currentSemester > 2) {
+        setFinishError('Choose your current semester from 1 to 2.');
+        return;
+      }
       const targetChoice = draft.targetChoice ?? 'A';
-      const targetCGPA = gradePointForTargetChoice(targetChoice, draft.customTargetPercent);
+      const targetCGPA = gradePointForTargetChoice(
+        targetChoice,
+        draft.customTargetPercent,
+        draft.customTargetCGPA,
+      );
       if (targetCGPA === null) {
-        setFinishError('Enter a valid custom target percentage before finishing setup.');
+        setFinishError('Enter a valid custom target before finishing setup.');
         return;
       }
       const university = draft.university === 'Other' ? draft.otherUniversity.trim() : draft.university.trim();
       const academicYear = draft.academicYear.trim();
+      const anchorAcademicYear = getActiveAcademicYear(getLocalCalendarDate());
+      const programmeAnchor = {
+        academicYear: anchorAcademicYear,
+        year: draft.yearOfStudy,
+        semester: draft.currentSemester,
+        programDurationYears: draft.programDurationYears,
+      };
+      const joinedAcademicYear = draft.programmeJoinedAcademicYear?.trim()
+        || deriveJoinedAcademicYear(anchorAcademicYear, programmeAnchor.year)
+        || '';
       const validCourses = draft.courses.filter((course) => course.name.trim());
       const matchingSemester = data.semesters.find((semester) =>
         semester.academicYear.trim().toLowerCase() === academicYear.toLowerCase()
@@ -628,12 +690,15 @@ export function OnboardingPage() {
       updateSettings({
         university: university || data.settings.university,
         programme: draft.programme.trim() || data.settings.programme,
-        yearOfStudy: draft.yearOfStudy ?? data.settings.yearOfStudy,
+        yearOfStudy: programmeAnchor.year,
+        programmeAnchor,
+        programmeJoinedAcademicYear: joinedAcademicYear,
         currentSemester: draft.currentSemester,
         academicYear: academicYear || data.settings.academicYear,
         targetCGPA,
         targetSet: true,
         customTargetPercent: targetChoice === 'custom' ? draft.customTargetPercent ?? null : null,
+        customTargetCGPA: targetChoice === 'custom-gp' ? draft.customTargetCGPA ?? null : null,
         targetChoice,
         legacyTargetPromptDismissed: true,
         onboardingCompleted: true,
@@ -755,18 +820,64 @@ export function OnboardingPage() {
                 </div>
                 <div>
                   <label htmlFor="onboarding-year" className="label">Year of study</label>
-                  <select id="onboarding-year" className="input" value={draft.yearOfStudy ?? ''} onChange={(event) => updateDraft({ yearOfStudy: event.target.value ? Number(event.target.value) : null })}>
+                  <select id="onboarding-year" className="input" required value={draft.yearOfStudy ?? ''} onChange={(event) => updateDraft({ yearOfStudy: event.target.value ? Number(event.target.value) : null })}>
                     <option value="">Choose year</option>
                     {[1, 2, 3, 4, 5, 6].map((year) => <option key={year} value={year}>Year {year}</option>)}
                   </select>
                 </div>
                 <div>
                   <label htmlFor="onboarding-semester" className="label">Semester</label>
-                  <select id="onboarding-semester" className="input" value={draft.currentSemester} onChange={(event) => updateDraft({ currentSemester: Number(event.target.value) })}>
+                  <select id="onboarding-semester" className="input" required value={draft.currentSemester} onChange={(event) => updateDraft({ currentSemester: Number(event.target.value) })}>
                     <option value={1}>Semester 1</option>
                     <option value={2}>Semester 2</option>
                   </select>
                 </div>
+                <div>
+                  <label htmlFor="onboarding-programme-years" className="label">Programme duration (years)</label>
+                  <input
+                    id="onboarding-programme-years"
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={6}
+                    step={1}
+                    inputMode="numeric"
+                    required
+                    value={draft.programDurationYears ?? ''}
+                    onChange={(event) => updateDraft({
+                      programDurationYears: event.target.value ? Number(event.target.value) : null,
+                    })}
+                    aria-describedby="onboarding-programme-years-help"
+                  />
+                  <p id="onboarding-programme-years-help" className="mt-1 text-xs text-ink-500 dark:text-ink-300">
+                    Your programme duration sets the expected finish estimate.
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="onboarding-joined-academic-year" className="label">Joined academic year</label>
+                  <input
+                    id="onboarding-joined-academic-year"
+                    className="input"
+                    maxLength={20}
+                    value={draft.programmeJoinedAcademicYear
+                      || (draft.yearOfStudy
+                        ? deriveJoinedAcademicYear(getActiveAcademicYear(getLocalCalendarDate()), draft.yearOfStudy) ?? ''
+                        : '')}
+                    onChange={(event) => updateDraft({ programmeJoinedAcademicYear: event.target.value })}
+                    aria-describedby="onboarding-joined-academic-year-help"
+                  />
+                  <p id="onboarding-joined-academic-year-help" className="mt-1 text-xs text-ink-500 dark:text-ink-300">
+                    A display label only. It does not affect your programme progress calculation.
+                  </p>
+                </div>
+                {draft.yearOfStudy && draft.programDurationYears && (() => {
+                  const validation = validateProgrammeAnchor(draft.yearOfStudy, draft.programDurationYears);
+                  return validation.message && (
+                    <p className={`sm:col-span-2 text-sm ${validation.severity === 'error' ? 'text-error-700' : 'text-warning-700'}`} role={validation.severity === 'error' ? 'alert' : 'status'}>
+                      {validation.message}
+                    </p>
+                  );
+                })()}
                 <div className="sm:col-span-2">
                   <label htmlFor="onboarding-academic-year" className="label">Academic year</label>
                   <input id="onboarding-academic-year" className="input" maxLength={20} value={draft.academicYear} onChange={(event) => updateDraft({ academicYear: event.target.value })} />
@@ -885,12 +996,13 @@ export function OnboardingPage() {
                     value={draft.targetChoice ?? 'A'}
                     onChange={(event) => {
                       const choice = event.target.value as TargetChoice;
-                      if (choice === 'custom') {
+                      if (choice === 'custom' || choice === 'custom-gp') {
                         setDraft((current) => ({
                           ...current,
                           targetChoice: choice,
                           targetCGPA: null,
                           customTargetPercent: null,
+                          customTargetCGPA: null,
                         }));
                         setTargetInput('');
                         return;
@@ -901,6 +1013,7 @@ export function OnboardingPage() {
                         targetChoice: choice,
                         targetCGPA,
                         customTargetPercent: null,
+                        customTargetCGPA: null,
                       }));
                       setTargetInput('');
                     }}
@@ -909,41 +1022,51 @@ export function OnboardingPage() {
                       <option key={option.value} value={option.value}>{option.label}</option>
                     ))}
                   </select>
-                  {draft.targetChoice === 'custom' && (
+                  {(draft.targetChoice === 'custom' || draft.targetChoice === 'custom-gp') && (
                     <div className="mt-3">
-                      <label htmlFor="onboarding-custom-target" className="label">Custom course target</label>
+                      <label htmlFor="onboarding-custom-target" className="label">
+                        {draft.targetChoice === 'custom-gp' ? 'Exact CGPA target' : 'Custom course target'}
+                      </label>
                       <div className="flex items-center gap-2">
                         <input
                           id="onboarding-custom-target"
                           type="number"
                           min={0}
-                          max={100}
-                          step={0.1}
+                          max={draft.targetChoice === 'custom-gp' ? maximumGradePoint : 100}
+                          step={draft.targetChoice === 'custom-gp' ? 0.01 : 0.1}
                           className="input tabular-nums"
                           value={targetInput}
                           onChange={(event) => {
                             const value = event.target.value;
                             const parsed = Number(value);
-                            const valid = value.trim() !== '' && Number.isFinite(parsed) && parsed >= 0 && parsed <= 100;
+                            const maximum = draft.targetChoice === 'custom-gp' ? maximumGradePoint : 100;
+                            const valid = value.trim() !== '' && Number.isFinite(parsed) && parsed >= 0 && parsed <= maximum;
                             setTargetInput(value);
                             setDraft((current) => ({
                               ...current,
-                              customTargetPercent: valid ? parsed : null,
-                              targetCGPA: valid ? getGradePoint(parsed) : null,
+                              customTargetPercent: current.targetChoice === 'custom' && valid ? parsed : null,
+                              customTargetCGPA: current.targetChoice === 'custom-gp' && valid ? parsed : null,
+                              targetCGPA: !valid
+                                ? null
+                                : current.targetChoice === 'custom-gp' ? parsed : getGradePoint(parsed),
                             }));
                           }}
                           aria-describedby="onboarding-custom-target-help"
                           aria-invalid={!targetInputIsValid}
                         />
-                        <span className="text-sm text-ink-500">%</span>
+                        <span className="text-sm text-ink-500">{draft.targetChoice === 'custom-gp' ? 'GP' : '%'}</span>
                       </div>
                       {!targetInputIsValid && (
                         <p role="alert" className="mt-1 text-xs leading-5 text-error-700 dark:text-error-300">
-                          Enter a target percentage from 0% to 100%.
+                          {draft.targetChoice === 'custom-gp'
+                            ? `Enter a CGPA from 0 to ${maximumGradePoint.toFixed(2)}.`
+                            : 'Enter a target percentage from 0% to 100%.'}
                         </p>
                       )}
                       <p id="onboarding-custom-target-help" className="mt-1 text-xs text-ink-600 dark:text-ink-300">
-                        Your exact percentage is retained; the global CGPA goal follows its grade-scale band.
+                        {draft.targetChoice === 'custom-gp'
+                          ? 'The exact CGPA is retained; course forecasts use its grade-scale percentage threshold.'
+                          : 'Your exact percentage is retained; the global CGPA goal follows its grade-scale band.'}
                       </p>
                     </div>
                   )}
