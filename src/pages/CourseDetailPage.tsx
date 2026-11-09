@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  ChevronDown,
   Plus,
   Trash2,
   Edit2,
@@ -54,6 +55,8 @@ export function CourseDetailPage() {
   const [assessModalOpen, setAssessModalOpen] = useState(false);
   const [editAssess, setEditAssess] = useState<Assessment | null>(null);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
+  const [expandedTopicsByCourse, setExpandedTopicsByCourse] = useState<Record<string, boolean>>({});
+  const topicsSectionRef = useRef<HTMLDivElement>(null);
 
   // Assessment form
   const [aName, setAName] = useState('');
@@ -89,6 +92,11 @@ export function CourseDetailPage() {
 
   const currentPct = courseAggregatePercent(course);
   const currentGP = courseCurrentGP(course);
+  const completedTopicCount = course.topics.filter((topic) => topic.completed).length;
+  const topicsExpanded = expandedTopicsByCourse[course.id] ?? false;
+  const topicProgress = course.topics.length > 0
+    ? (completedTopicCount / course.topics.length) * 100
+    : 0;
   const targetPercent = targetPercentForCourse(course, data.settings);
   const targetLabel = targetPercent === minPercentForGradePoint(course.targetGradePoint)
     ? `${gradeLabelForGradePoint(course.targetGradePoint)} (${course.targetGradePoint.toFixed(1)} GP)`
@@ -154,6 +162,21 @@ export function CourseDetailPage() {
       .filter(Boolean);
     topics.forEach((topic) => addTopic(course.id, topic));
     if (topics.length > 0) setTopicInput('');
+  };
+
+  const toggleTopics = () => {
+    setExpandedTopicsByCourse((previous) => ({
+      ...previous,
+      [course.id]: !topicsExpanded,
+    }));
+  };
+
+  const openTopicsAndScroll = () => {
+    setExpandedTopicsByCourse((previous) => ({ ...previous, [course.id]: true }));
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
+    window.requestAnimationFrame(() => {
+      topicsSectionRef.current?.scrollIntoView({ behavior, block: 'start' });
+    });
   };
 
   const acceptedExtensions = ['pdf', 'docx', 'doc', 'pptx', 'ppt'];
@@ -463,54 +486,81 @@ export function CourseDetailPage() {
         )}
       </div>
 
-      <div id="course-topics" className="card p-5 scroll-mt-6">
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div>
+      <div ref={topicsSectionRef} id="course-topics" className="card p-5 scroll-mt-6">
+        <button
+          type="button"
+          onClick={toggleTopics}
+          aria-expanded={topicsExpanded}
+          aria-controls="course-topics-content"
+          className="w-full text-left"
+        >
+          <span className="flex items-center justify-between gap-3">
+            <span className="font-display font-semibold text-ink-900">
+              Topics · {course.topics.length} · {completedTopicCount} done
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-ink-500 transition-transform motion-reduce:transition-none ${topicsExpanded ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </span>
+          <span
+            className="mt-2 block h-1 overflow-hidden rounded-full bg-ink-100"
+            role="progressbar"
+            aria-label="Course topic completion"
+            aria-valuemin={0}
+            aria-valuemax={Math.max(course.topics.length, 1)}
+            aria-valuenow={completedTopicCount}
+            aria-valuetext={`${completedTopicCount} of ${course.topics.length} topics done`}
+          >
+            <span className="block h-full rounded-full bg-primary-500" style={{ width: `${topicProgress}%` }} />
+          </span>
+        </button>
+        <div id="course-topics-content" hidden={!topicsExpanded} className="pt-4">
+          <div className="mb-4">
             <h3 className="font-display font-semibold text-ink-900">Course Topics</h3>
             <p className="text-xs text-ink-500 mt-0.5">Add one topic per line to enter several topics at once.</p>
           </div>
-          <span className="badge bg-primary-100 text-primary-700">{course.topics.length} topic{course.topics.length !== 1 ? 's' : ''}</span>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <textarea
-            value={topicInput}
-            onChange={(event) => setTopicInput(event.target.value)}
-            placeholder={'Topic 1\nTopic 2\nTopic 3'}
-            className="input min-h-24 resize-y flex-1"
-            aria-label="Topics to add"
-          />
-          <button type="button" onClick={handleAddTopics} className="btn-primary sm:self-end">
-            <Plus className="w-3.5 h-3.5" /> Add Topics
-          </button>
-        </div>
-        {course.topics.length > 0 && (
-          <div className="mt-4 space-y-2">
-            {course.topics.map((topic) => (
-              <div key={topic.id} className="flex items-center gap-3 rounded-lg border border-ink-100 px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={topic.completed}
-                  onChange={(event) => updateTopic(course.id, topic.id, { completed: event.target.checked })}
-                  className="h-4 w-4 accent-primary-600"
-                  aria-label={`Mark ${topic.title} complete`}
-                />
-                <span className={`flex-1 text-sm ${topic.completed ? 'text-ink-400 line-through' : 'text-ink-800'}`}>{topic.title}</span>
-                <button type="button" onClick={() => deleteTopic(course.id, topic.id)} className="p-1.5 text-ink-300 hover:text-error-500" title="Delete topic">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <textarea
+              value={topicInput}
+              onChange={(event) => setTopicInput(event.target.value)}
+              placeholder={'Topic 1\nTopic 2\nTopic 3'}
+              className="input min-h-24 resize-y flex-1"
+              aria-label="Topics to add"
+            />
+            <button type="button" onClick={handleAddTopics} className="btn-primary sm:self-end">
+              <Plus className="w-3.5 h-3.5" /> Add Topics
+            </button>
           </div>
-        )}
+          {course.topics.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {course.topics.map((topic) => (
+                <div key={topic.id} className="flex items-center gap-3 rounded-lg border border-ink-100 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={topic.completed}
+                    onChange={(event) => updateTopic(course.id, topic.id, { completed: event.target.checked })}
+                    className="h-4 w-4 accent-primary-600"
+                    aria-label={`Mark ${topic.title} complete`}
+                  />
+                  <span className={`flex-1 text-sm ${topic.completed ? 'text-ink-400 line-through' : 'text-ink-800'}`}>{topic.title}</span>
+                  <button type="button" onClick={() => deleteTopic(course.id, topic.id)} className="p-1.5 text-ink-300 hover:text-error-500" title="Delete topic">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Course resources */}
       <div className="card p-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <a href="#course-topics" className="text-primary-600 hover:text-primary-800">Jump to topics</a>
+            <button type="button" onClick={openTopicsAndScroll} className="text-primary-600 hover:text-primary-800 hover:underline">Jump to topics</button>
             <span className="text-ink-300">•</span>
-            <a href="#course-topics" className="text-primary-600 hover:text-primary-800">View topics</a>
+            <button type="button" onClick={openTopicsAndScroll} className="text-primary-600 hover:text-primary-800 hover:underline">View topics</button>
           </div>
           <span className="badge bg-primary-100 text-primary-700">{course.documents.length} file{course.documents.length !== 1 ? 's' : ''}</span>
         </div>
