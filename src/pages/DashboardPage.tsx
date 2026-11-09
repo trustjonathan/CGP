@@ -84,8 +84,9 @@ export function DashboardPage() {
     if (!showSetupReminder || !user?.id) return;
     const today = new Date().toDateString();
     if (reminder.lastShownAt && new Date(reminder.lastShownAt).toDateString() === today) return;
-    if (reminder.notificationsEnabled && window.desktopApp && window.Notification?.permission === 'granted' && completeness.nextStep) {
-      new window.Notification('CGP setup reminder', { body: completeness.nextStep.label, tag: 'cgp-setup-reminder' });
+    const notificationPermission = typeof Notification !== 'undefined' ? Notification.permission : 'denied';
+    if (reminder.notificationsEnabled && notificationPermission === 'granted' && completeness.nextStep) {
+      new Notification('CGP setup reminder', { body: completeness.nextStep.label, tag: 'cgp-setup-reminder' });
     }
     const next = { ...reminder, lastShownAt: Date.now() };
     setReminder(next);

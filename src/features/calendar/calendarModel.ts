@@ -1,6 +1,12 @@
-import calendarData from '@/data/calendars/kabale-2026-2027.json';
-import type { CourseUnit, ProgrammeAnchor } from '@/lib/types';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { intervalToDuration } from 'date-fns/intervalToDuration';
+import calendarDataJson from '@/data/calendars/kabale-2026-2027.json';
+import type { AcademicCalendar } from '@/lib/academicCalendar';
 import { addCalendarMonths, getDaysUntilCalendarDate, parseCalendarDate } from '@/lib/academicCalendar';
+import type { CourseUnit, ProgrammeAnchor } from '@/lib/types';
+import { getMilestonePriority, type CalendarTimelineEvent, type TimelineEventType } from './calendarTimeline';
+
+const calendarData = calendarDataJson as AcademicCalendar;
 
 export function getLocalCalendarDate(date = new Date()): string {
   const year = date.getFullYear();
@@ -24,17 +30,20 @@ export function getActiveAcademicYear(today: string) {
 
 export function getUpcomingCalendarMilestones(today: string, limit = 5) {
   parseCalendarDate(today);
-  const milestones = calendarData.semesters.flatMap((semester) => semester.milestones.map((milestone) => ({
+  const milestones: CalendarTimelineEvent[] = calendarData.semesters.flatMap((semester) => semester.milestones.map((milestone) => ({
     ...milestone,
+    type: milestone.type as TimelineEventType,
     semesterNumber: semester.number,
+    priority: getMilestonePriority(milestone.type as TimelineEventType),
   })));
-  const ceremonies = calendarData.ceremonies.map((ceremony, index) => ({
+  const ceremonies: CalendarTimelineEvent[] = calendarData.ceremonies.map((ceremony, index) => ({
     id: `ceremony-${index}`,
     label: ceremony.label,
     date: ceremony.date,
-    type: 'ceremony',
+    type: 'ceremony' as const,
     semesterNumber: calendarData.semesters.find((semester) =>
       ceremony.date >= semester.start && ceremony.date <= semester.end)?.number ?? null,
+    priority: getMilestonePriority('ceremony'),
   }));
   return [...milestones, ...ceremonies]
     .filter((milestone) => milestone.date >= today)
@@ -45,16 +54,21 @@ export function getUpcomingCalendarMilestones(today: string, limit = 5) {
 export function getSemesterCalendarEvents(semesterNumber: number) {
   const semester = calendarData.semesters.find((item) => item.number === semesterNumber);
   if (!semester) return [];
-  const milestones = semester.milestones
-    .filter((milestone) => milestone.date >= semester.start && milestone.date <= semester.end);
-  const ceremonies = calendarData.ceremonies
+  const milestones: CalendarTimelineEvent[] = semester.milestones.map((milestone) => ({
+    ...milestone,
+    type: milestone.type as TimelineEventType,
+    semesterNumber,
+    priority: getMilestonePriority(milestone.type as TimelineEventType),
+  }));
+  const ceremonies: CalendarTimelineEvent[] = calendarData.ceremonies
     .filter((ceremony) => ceremony.date >= semester.start && ceremony.date <= semester.end)
     .map((ceremony, index) => ({
       id: `ceremony-${index}`,
       label: ceremony.label,
       date: ceremony.date,
-      type: 'ceremony',
-      endDate: undefined,
+      type: 'ceremony' as const,
+      semesterNumber,
+      priority: getMilestonePriority('ceremony'),
     }));
   return [...milestones, ...ceremonies]
     .sort((left, right) => left.date.localeCompare(right.date) || left.label.localeCompare(right.label));
@@ -137,17 +151,75 @@ export function programmeRemaining(anchor: ProgrammeAnchor, today: string) {
 export function getCourseworkProgress(courses: CourseUnit[]) {
   const courseworkByCourse = courses.map((course) => ({
     course,
-    assessments: course.assessments.filter((assessment) => /\bcoursework\b/i.test(assessment.name)),
+    assessments: course.assessments.filter((assessment) =>
+      !/\b(exam|final)\b/i.test(assessment.name)),
   }));
-  const assessments = courseworkByCourse.flatMap(({ assessments: courseAssessments }) => courseAssessments);
+  const assessments = courseworkByCourse.flatMap(({ assessments: courseAssessments }) =>
+    courseAssessments.filter((assessment) => !/\bcurrent result\b/i.test(assessment.name)));
   return {
     completed: assessments.filter((assessment) => assessment.obtained !== null).length,
     total: assessments.length,
     coursesNeedingMarks: courseworkByCourse
-      .filter(({ assessments: courseAssessments }) =>
-        courseAssessments.length === 0 || courseAssessments.every((assessment) => assessment.obtained === null))
+      .filter(({ assessments: courseAssessments }) => {
+        const tasks = courseAssessments.filter((assessment) => !/\bcurrent result\b/i.test(assessment.name));
+        return tasks.length === 0
+          ? courseAssessments.length === 0
+          : tasks.every((assessment) => assessment.obtained === null);
+      })
       .map(({ course }) => course),
   };
+}
+
+export function formatCountdown(target: string | Date, now: string | Date): string {
+  const targetDate = typeof target === 'string'
+    ? new Date(
+      parseCalendarDate(target).getFullYear(),
+      parseCalendarDate(target).getMonth(),
+      parseCalendarDate(target).getDate(),
+      8,
+      0,
+      0,
+    )
+    : new Date(target.getTime());
+  const nowDate = typeof now === 'string' ? parseCalendarDate(now) : new Date(now.getTime());
+  const totalMilliseconds = targetDate.getTime() - nowDate.getTime();
+
+  if (totalMilliseconds <= 0) {
+    return '0d 0h';
+  }
+
+  const totalSeconds = Math.floor(totalMilliseconds / 1000);
+  const dayDifference = differenceInCalendarDays(targetDate, nowDate);
+
+  if (dayDifference < 1) {
+    const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+    const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+    const seconds = String(totalSeconds % 60).padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+  }
+
+  if (dayDifference === 1) {
+    const remainingHours = Math.floor((totalMilliseconds / 3600000) % 24);
+    return `${dayDifference}d ${remainingHours}h`;
+  }
+
+  if (dayDifference >= 2 && dayDifference <= 7) {
+    const remainingHours = Math.floor((totalMilliseconds / 3600000) % 24);
+    return `${dayDifference}d ${remainingHours}h`;
+  }
+
+  if (dayDifference >= 8 && dayDifference <= 60) {
+    return `${dayDifference} days`;
+  }
+
+  const interval = intervalToDuration({ start: nowDate, end: targetDate });
+  const months = interval.months ?? 0;
+  const days = interval.days ?? 0;
+  if (months > 0) {
+    return days > 0 ? `${months} months, ${days} days` : `${months} months`;
+  }
+
+  return `${dayDifference} days`;
 }
 
 export function getMilestoneDaysRemaining(date: string, today: string): number {

@@ -9,18 +9,20 @@ import {
   CheckCircle2,
   Clock3,
 } from 'lucide-react';
-import calendarData from '@/data/calendars/kabale-2026-2027.json';
+import calendarDataJson from '@/data/calendars/kabale-2026-2027.json';
 import {
   getCalendarIntervalDuration,
-  getCalendarWeekNumber,
-  getDaysUntilCalendarDate,
   parseCalendarDate,
+  type AcademicCalendar,
+  type AcademicCalendarSemester,
 } from '@/lib/academicCalendar';
+
+const calendarData = calendarDataJson as AcademicCalendar;
 import { useAppData } from '@/lib/useAppData';
 import {
+  formatCountdown,
   getCourseworkProgress,
   getLocalCalendarDate,
-  getMilestoneDaysRemaining,
   deriveJoinedAcademicYear,
   programmeRemaining,
   getSelectedCalendarSemester,
@@ -28,6 +30,8 @@ import {
   getUpcomingCalendarMilestones,
   validateProgrammeAnchor,
 } from '@/features/calendar/calendarModel';
+import { getCalendarWeekLabel } from '@/features/calendar/calendarTimeline';
+import { CalendarTimeline } from '@/features/calendar/CalendarTimelineView';
 import '@/features/calendar/calendar-theme.css';
 
 function formatDate(value: string) {
@@ -37,11 +41,6 @@ function formatDate(value: string) {
     month: 'short',
     year: 'numeric',
   }).format(parseCalendarDate(value)).replace(',', '');
-}
-
-function countdownLabel(days: number) {
-  if (days === 0) return 'Today';
-  return `${days} day${days === 1 ? '' : 's'}`;
 }
 
 function durationLabel(start: string, end: string) {
@@ -70,10 +69,13 @@ function clampPercent(value: number) {
 
 export function CalendarPage() {
   const { data, updateSettings } = useAppData();
+  const [liveNow, setLiveNow] = useState(() => new Date());
+  const [upcomingFilter, setUpcomingFilter] = useState<'all' | 'coursework' | 'exam' | 'results' | 'admin'>('all');
   const today = getLocalCalendarDate();
+
   const semester = getSelectedCalendarSemester(today);
-  const calendarSemester = semester
-    ? calendarData.semesters.find((item) => item.number === semester.number) ?? null
+  const calendarSemester: AcademicCalendarSemester | null = semester
+    ? (calendarData.semesters.find((item) => item.number === semester.number) as AcademicCalendarSemester | undefined) ?? null
     : null;
   const programmeAnchor = data.settings.programmeAnchor ?? null;
   const [showAnchorPrompt, setShowAnchorPrompt] = useState(false);
@@ -151,10 +153,55 @@ export function CalendarPage() {
     dismissAnchorPrompt();
   };
 
-  const upcomingMilestones = getUpcomingCalendarMilestones(today, 5);
+  const upcomingMilestones = getUpcomingCalendarMilestones(today, 100);
   const nextMilestone = upcomingMilestones[0] ?? null;
-  const selectedSemester = semester
-    ? calendarData.semesters.find((item) => item.number === semester.number)
+  const upcomingFilterOptions = [
+    { label: 'All', value: 'all' },
+    { label: 'Coursework', value: 'coursework' },
+    { label: 'Exams', value: 'exam' },
+    { label: 'Results', value: 'results' },
+    { label: 'Admin', value: 'admin' },
+  ] as const;
+  const filteredUpcomingMilestones = upcomingMilestones.filter((milestone) => {
+    if (upcomingFilter === 'all') return true;
+    if (upcomingFilter === 'coursework') return milestone.type === 'coursework' || milestone.type === 'deadline';
+    if (upcomingFilter === 'exam') return milestone.type === 'exam';
+    if (upcomingFilter === 'results') return milestone.type === 'results' || milestone.type === 'deadline';
+    if (upcomingFilter === 'admin') return milestone.type === 'admin' || milestone.type === 'ceremony';
+    return true;
+  });
+  const upcomingGroups = Object.entries(
+    filteredUpcomingMilestones.reduce<Record<string, typeof filteredUpcomingMilestones>>((groups, milestone) => {
+      const key = new Date(
+        parseCalendarDate(milestone.date).getFullYear(),
+        parseCalendarDate(milestone.date).getMonth(),
+        parseCalendarDate(milestone.date).getDate(),
+      );
+      const label = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(key);
+      groups[label] ??= [];
+      groups[label].push(milestone);
+      return groups;
+    }, {}),
+  ).map(([label, items]) => ({ label, items }));
+
+  useEffect(() => {
+    if (!nextMilestone) return undefined;
+    const nextMilestoneDate = new Date(
+      parseCalendarDate(nextMilestone.date).getFullYear(),
+      parseCalendarDate(nextMilestone.date).getMonth(),
+      parseCalendarDate(nextMilestone.date).getDate(),
+      8,
+      0,
+      0,
+    );
+    const diffMs = nextMilestoneDate.getTime() - liveNow.getTime();
+    if (diffMs <= 0 || diffMs > 24 * 60 * 60 * 1000) return undefined;
+    const timer = window.setInterval(() => setLiveNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, [liveNow, nextMilestone]);
+
+  const selectedSemester: AcademicCalendarSemester | null = semester
+    ? (calendarData.semesters.find((item) => item.number === semester.number) as AcademicCalendarSemester | undefined) ?? null
     : null;
   const appSemester = selectedSemester
     ? data.semesters.find((item) => item.semesterNumber === selectedSemester.number
@@ -168,23 +215,7 @@ export function CalendarPage() {
     ? programmeRemaining(programmeAnchor, today)
     : null;
   const totalSemesters = programmeAnchor ? programmeAnchor.programDurationYears * 2 : null;
-  const semesterEvents = selectedSemester
-    ? getSemesterCalendarEvents(selectedSemester.number)
-    : [];
-  const semesterDays = semester
-    ? Math.max(1, getDaysUntilCalendarDate(semester.end, parseCalendarDate(semester.start)))
-    : 1;
-  const remainingDays = semester
-    ? getDaysUntilCalendarDate(semester.end, parseCalendarDate(today))
-    : 0;
-  const semesterProgress = clampPercent(((semesterDays - remainingDays) / semesterDays) * 100);
-  const exam = semesterEvents.find((event) => event.type === 'exam' && event.endDate);
-  const examStartPosition = exam && semester
-    ? clampPercent((getDaysUntilCalendarDate(exam.date, parseCalendarDate(semester.start)) / semesterDays) * 100)
-    : 0;
-  const examEndPosition = exam && semester && exam.endDate
-    ? clampPercent((getDaysUntilCalendarDate(exam.endDate, parseCalendarDate(semester.start)) / semesterDays) * 100)
-    : 0;
+  const semesterEvents = selectedSemester ? getSemesterCalendarEvents(selectedSemester.number) : [];
   const finishOverride = data.settings.programmeFinishDateOverride ?? '';
   let validFinishOverride = finishOverride;
   if (finishOverride) {
@@ -214,11 +245,11 @@ export function CalendarPage() {
               {calendarData.academicYear} calendar
             </p>
             <p className="mt-4 text-sm font-semibold text-primary-800 dark:text-primary-200">
-              {semester ? `Semester ${semester.number} · Week ${Math.max(0, getCalendarWeekNumber(today, semester.weekStart))}` : 'Academic calendar'}
+              {semester ? `Semester ${semester.number} · ${getCalendarWeekLabel(today, semester.weekStart)}` : 'Academic calendar'}
             </p>
             <h1 className="mt-2 max-w-2xl font-display text-3xl font-bold leading-tight tracking-tight text-ink-950 dark:text-white sm:text-4xl">
               {nextMilestone
-                ? `${nextMilestone.label} ${getMilestoneDaysRemaining(nextMilestone.date, today) === 0 ? 'is today' : `in ${getMilestoneDaysRemaining(nextMilestone.date, today)} ${getMilestoneDaysRemaining(nextMilestone.date, today) === 1 ? 'day' : 'days'}`}`
+                ? `${nextMilestone.label} in ${formatCountdown(nextMilestone.date, liveNow)}`
                 : 'No more milestones scheduled'}
             </h1>
             <p className="mt-3 text-sm text-ink-600 dark:text-ink-300">
@@ -269,88 +300,13 @@ export function CalendarPage() {
           </section>
         )}
 
-        <section className="rounded-2xl border border-ink-200 bg-white/90 p-4 shadow-sm dark:border-ink-700 dark:bg-ink-900/90 sm:p-5" aria-labelledby="semester-timeline-title">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 id="semester-timeline-title" className="font-display text-lg font-semibold text-ink-900 dark:text-ink-50">
-                Semester {semester?.number ?? '—'} timeline
-              </h2>
-              <p className="mt-1 text-sm text-ink-600 dark:text-ink-300">
-                {semester ? `${formatDate(semester.start)} – ${formatDate(semester.end)}` : 'No semester dates are available.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-3 text-xs text-ink-600 dark:text-ink-300" aria-label="Timeline legend">
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-primary-600" />Progress</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-warning-500" />Exams</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-error-500" />Today</span>
-            </div>
-          </div>
-
-          {semester && (
-            <div className="mt-5 overflow-x-auto pb-2" role="region" aria-label="Scrollable semester timeline">
-              <div
-                className="relative min-w-[760px]"
-                role="img"
-                aria-label={`Semester ${semester.number} is ${Math.round(semesterProgress)} percent complete. ${semesterEvents.length} calendar events are marked.`}
-              >
-                <div className="relative mt-8 h-3 rounded-full bg-ink-200 dark:bg-ink-700">
-                  <div className="absolute inset-y-0 left-0 rounded-full bg-primary-600" style={{ width: `${semesterProgress}%` }} />
-                  {exam && (
-                    <div
-                      className="absolute inset-y-0 rounded-full bg-warning-400/90"
-                      style={{
-                        left: `${examStartPosition}%`,
-                        width: `${Math.max(1, examEndPosition - examStartPosition)}%`,
-                      }}
-                    />
-                  )}
-                  <div className="absolute -top-7 -translate-x-1/2 whitespace-nowrap text-xs font-semibold text-error-700 dark:text-error-300" style={{ left: `${semesterProgress}%` }}>
-                    Today
-                  </div>
-                  <div className="absolute -top-1.5 h-6 w-0.5 -translate-x-1/2 bg-error-500" style={{ left: `${semesterProgress}%` }} />
-                  {semesterEvents.map((event) => {
-                    const position = clampPercent(
-                      (getDaysUntilCalendarDate(event.date, parseCalendarDate(semester.start)) / semesterDays) * 100,
-                    );
-                    return (
-                      <span
-                        key={event.id}
-                        className={`absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white ${eventMarkerColor(event.type)} dark:border-ink-900`}
-                        style={{ left: `${position}%` }}
-                        title={`${event.label}: ${formatDate(event.date)}`}
-                        aria-hidden="true"
-                      />
-                    );
-                  })}
-                </div>
-                <div className="relative mt-3 h-28">
-                  {semesterEvents.map((event, index) => {
-                    const position = clampPercent(
-                      (getDaysUntilCalendarDate(event.date, parseCalendarDate(semester.start)) / semesterDays) * 100,
-                    );
-                    return (
-                      <div
-                        key={event.id}
-                        className="absolute flex w-24 -translate-x-1/2 flex-col items-center text-center"
-                        style={{ left: `${position}%`, top: `${(index % 3) * 34}px` }}
-                        title={`${event.label}: ${formatDate(event.date)}`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${eventMarkerColor(event.type)}`} aria-hidden="true" />
-                        <span className="mt-1 line-clamp-2 text-[10px] leading-3 text-ink-600 dark:text-ink-300">
-                          {event.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="flex justify-between border-t border-ink-200 pt-2 text-xs text-ink-500 dark:border-ink-700 dark:text-ink-300">
-                  <span>Semester start</span>
-                  <span>Semester end</span>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
+        {semester && (
+          <CalendarTimeline
+            semester={semester}
+            events={semesterEvents}
+            today={today}
+          />
+        )}
 
         <section className="grid gap-4 md:grid-cols-3" aria-label="Calendar summary">
           <article className="rounded-2xl border border-ink-200 bg-white/90 p-5 shadow-sm dark:border-ink-700 dark:bg-ink-900/90">
@@ -363,8 +319,8 @@ export function CalendarPage() {
             </p>
             <p className="mt-1 text-sm text-ink-600 dark:text-ink-300">
               {courseworkProgress.total
-                ? 'Coursework assessment marks entered for this semester.'
-                : 'Add coursework assessments to courses in this semester.'}
+                ? 'Coursework, CAT, test and assignment marks entered for this semester.'
+                : 'Add coursework assessments, CATs, tests or assignments to courses in this semester.'}
             </p>
           </article>
 
@@ -377,7 +333,7 @@ export function CalendarPage() {
               <>
                 <p className="mt-4 line-clamp-2 font-display text-lg font-semibold text-ink-900 dark:text-ink-50">{nextMilestone.label}</p>
                 <p className="mt-1 text-sm text-ink-600 dark:text-ink-300">
-                  {formatDate(nextMilestone.date)} · {countdownLabel(getMilestoneDaysRemaining(nextMilestone.date, today))}
+                  {formatDate(nextMilestone.date)} · {formatCountdown(nextMilestone.date, today)}
                 </p>
               </>
             ) : <p className="mt-4 text-sm text-ink-600 dark:text-ink-300">No more milestones are scheduled.</p>}
@@ -418,27 +374,59 @@ export function CalendarPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 id="upcoming-milestones-title" className="font-display text-lg font-semibold text-ink-900 dark:text-ink-50">Upcoming</h2>
-                <p className="mt-1 text-sm text-ink-600 dark:text-ink-300">The next five dates in the academic calendar.</p>
+                <p className="mt-1 text-sm text-ink-600 dark:text-ink-300">All scheduled milestones, including reporting and university events.</p>
               </div>
               <CalendarDays className="h-5 w-5 text-primary-700 dark:text-primary-300" aria-hidden="true" />
             </div>
             {upcomingMilestones.length ? (
-              <ol className="mt-4 divide-y divide-ink-100 dark:divide-ink-700">
-                {upcomingMilestones.map((milestone) => (
-                  <li key={milestone.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                    <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${eventMarkerColor(milestone.type)}`} aria-hidden="true" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{milestone.label}</p>
-                      <p className="mt-0.5 text-xs text-ink-600 dark:text-ink-300">
-                        {formatDate(milestone.date)}{milestone.semesterNumber ? ` · Semester ${milestone.semesterNumber}` : ''}
-                      </p>
+              <>
+                <div className="mt-4 flex flex-wrap gap-2" aria-label="Milestone filters">
+                  {upcomingFilterOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setUpcomingFilter(option.value)}
+                      className={`rounded-full border px-2.5 py-1.5 text-xs font-semibold transition ${upcomingFilter === option.value
+                        ? 'border-primary-200 bg-primary-50 text-primary-800 dark:border-primary-700 dark:bg-primary-900/40 dark:text-primary-200'
+                        : 'border-ink-200 bg-white text-ink-600 hover:bg-ink-50 dark:border-ink-700 dark:bg-ink-800 dark:text-ink-300 dark:hover:bg-ink-700'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 max-h-[22rem] overflow-y-auto pr-1">
+                  {upcomingGroups.map(({ label, items }) => (
+                    <div key={label} className="mb-4 last:mb-0">
+                      <div className="sticky top-0 z-10 mb-2 rounded-md bg-white/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-500 dark:bg-ink-900/90 dark:text-ink-300">
+                        {label}
+                      </div>
+                      <ol className="space-y-2">
+                        {items.map((milestone) => (
+                          <li key={milestone.id} className="flex items-start gap-3 rounded-xl border border-ink-100 px-2 py-2 dark:border-ink-700">
+                            <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${eventMarkerColor(milestone.type)}`} aria-hidden="true" />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-semibold text-ink-900 dark:text-ink-50">{milestone.label}</p>
+                                {milestone.priority === 'secondary' && (
+                                  <span className="rounded-full border border-ink-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-500 dark:border-ink-600 dark:text-ink-300">
+                                    Secondary
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-0.5 text-xs text-ink-600 dark:text-ink-300">
+                                {formatDate(milestone.date)}{milestone.semesterNumber ? ` · Semester ${milestone.semesterNumber}` : ''}
+                              </p>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-800 dark:bg-primary-900/50 dark:text-primary-200">
+                              {formatCountdown(milestone.date, today)}
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
                     </div>
-                    <span className="shrink-0 rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-800 dark:bg-primary-900/50 dark:text-primary-200">
-                      {countdownLabel(getMilestoneDaysRemaining(milestone.date, today))}
-                    </span>
-                  </li>
-                ))}
-              </ol>
+                  ))}
+                </div>
+              </>
             ) : (
               <p className="mt-4 rounded-xl bg-ink-50 p-4 text-sm text-ink-600 dark:bg-ink-800 dark:text-ink-300">
                 There are no upcoming dates in this academic calendar.

@@ -24,6 +24,7 @@ import { SetupsPage } from '@/pages/SetupsPage';
 import { ImportSetupPage } from '@/pages/ImportSetupPage';
 import { DocumentsPage } from '@/pages/DocumentsPage';
 import { CalendarPage } from '@/pages/CalendarPage';
+import { CalendarReminderScheduler } from '@/features/calendar/CalendarReminderScheduler';
 
 function App() {
   return (
@@ -131,6 +132,7 @@ function CloudWorkspace() {
 
   return (
     <div className="flex min-h-screen bg-ink-50">
+      <CalendarReminderScheduler />
       <Sidebar />
       <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6 pb-24 pt-20 lg:pb-6 lg:pt-6 max-w-6xl mx-auto w-full">
         <SyncStatusToast

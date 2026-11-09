@@ -24,7 +24,7 @@ export function SyncSettingsPage() {
   const [notificationMessage, setNotificationMessage] = useState('');
   const [notificationBusy, setNotificationBusy] = useState(false);
   const version = import.meta.env.VITE_APP_VERSION || '1.0.0';
-  const desktopNotificationsAvailable = Boolean(window.desktopApp && 'Notification' in window);
+  const notificationsAvailable = typeof Notification !== 'undefined';
 
   useEffect(() => {
     const updateConnectivity = () => setOnline(navigator.onLine);
@@ -50,12 +50,12 @@ export function SyncSettingsPage() {
   }, [user?.id]);
 
   const setNotificationPreference = async (enabled: boolean) => {
-    if (!user?.id || !desktopNotificationsAvailable || !('Notification' in window)) return;
+    if (!user?.id || !notificationsAvailable) return;
     setNotificationBusy(true);
     setNotificationMessage('');
     try {
       if (enabled) {
-        const permission = await window.Notification.requestPermission();
+        const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
           setNotificationMessage('Notifications were not enabled. You can continue using CGP without them.');
           return;
@@ -130,7 +130,7 @@ export function SyncSettingsPage() {
           <p className="mt-1 text-sm leading-6 text-ink-600">Update your academic details.</p>
         </div>
         <Link to="/onboarding?again=1" className="btn-secondary inline-flex items-center gap-2">Run setup again</Link>
-        {desktopNotificationsAvailable && (
+        {notificationsAvailable && (
           <div className="border-t border-ink-100 pt-4">
             <div className="flex items-start gap-3">
               <Bell className="mt-0.5 h-5 w-5 text-primary-600" aria-hidden="true" />

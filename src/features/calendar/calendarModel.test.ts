@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CourseUnit } from '@/lib/types';
 import {
   deriveJoinedAcademicYear,
+  formatCountdown,
   getCourseworkProgress,
   getMilestoneDaysRemaining,
   getSelectedCalendarSemester,
@@ -36,6 +37,13 @@ describe('calendar page model', () => {
 
   it('calculates milestone countdowns using calendar days', () => {
     expect(getMilestoneDaysRemaining('2026-11-27', '2026-11-09')).toBe(18);
+  });
+
+  it('formats countdown strings for the current range rules', () => {
+    expect(formatCountdown('2026-11-27', '2026-11-09')).toBe('18 days');
+    expect(formatCountdown('2027-03-03', '2026-11-09')).toBe('3 months, 22 days');
+    expect(formatCountdown('2026-11-10', '2026-11-09')).toBe('1d 8h');
+    expect(formatCountdown(new Date(2026, 10, 9, 12, 0, 0), new Date(2026, 10, 9, 10, 0, 0))).toBe('02:00:00');
   });
 
   it('calculates remaining semesters and finish estimate from the programme anchor', () => {
@@ -111,13 +119,19 @@ describe('calendar page model', () => {
 
   it('counts marked coursework assessments and identifies courses without any marks', () => {
     const result = getCourseworkProgress([
-      course('marked', [{ id: 'a', name: 'Coursework 1', weight: 20, obtained: 15, total: 20 }]),
-      course('unmarked', [{ id: 'b', name: 'Coursework', weight: 40, obtained: null, total: 40 }]),
+      course('marked', [
+        { id: 'a', name: 'CAT 1', weight: 20, obtained: 15, total: 20 },
+        { id: 'b', name: 'Assignment 1', weight: 20, obtained: 18, total: 20 },
+      ]),
+      course('unmarked', [{ id: 'c', name: 'Test 1', weight: 20, obtained: null, total: 20 }]),
       course('missing', [{ id: 'c', name: 'Exam', weight: 60, obtained: null, total: 100 }]),
+      course('onboarding-result', [
+        { id: 'd', name: 'Current result', weight: 100, obtained: 72, total: 100 },
+      ]),
     ]);
 
-    expect(result.completed).toBe(1);
-    expect(result.total).toBe(2);
+    expect(result.completed).toBe(2);
+    expect(result.total).toBe(3);
     expect(result.coursesNeedingMarks.map(({ id }) => id)).toEqual(['unmarked', 'missing']);
   });
 });
