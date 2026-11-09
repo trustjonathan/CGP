@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react';
 import { Check, CircleHelp, ExternalLink, MessageCircleQuestion, Search, X } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAppData } from '@/lib/useAppData';
@@ -15,6 +19,38 @@ interface HelpFaq {
 }
 
 const faqs = helpKnowledge.sections.flatMap((section) => section.faqs) as HelpFaq[];
+const HELP_WIDGET_POSITION_KEY = 'cgp-help-widget-position-v1';
+
+interface HelpWidgetPosition {
+  left: number;
+  top: number;
+}
+
+interface HelpWidgetDrag {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startLeft: number;
+  startTop: number;
+  moved: boolean;
+}
+
+function clampHelpWidgetPosition(position: HelpWidgetPosition, element: HTMLElement): HelpWidgetPosition {
+  const maxLeft = Math.max(8, window.innerWidth - element.offsetWidth - 8);
+  const maxTop = Math.max(8, window.innerHeight - element.offsetHeight - 8);
+  return {
+    left: Math.max(8, Math.min(maxLeft, position.left)),
+    top: Math.max(8, Math.min(maxTop, position.top)),
+  };
+}
+
+function saveHelpWidgetPosition(position: HelpWidgetPosition) {
+  try {
+    window.localStorage.setItem(HELP_WIDGET_POSITION_KEY, JSON.stringify(position));
+  } catch (error) {
+    console.error('Unable to save the CGP Help button position.', error);
+  }
+}
 
 function routeMatches(route: string, pathname: string) {
   if (route === '/') return pathname === '/';
@@ -34,8 +70,17 @@ export function HelpAssistant() {
   const [answerId, setAnswerId] = useState('');
   const [asking, setAsking] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [widgetPosition, setWidgetPosition] = useState<HelpWidgetPosition | null>(null);
+  const [draggingWidget, setDraggingWidget] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const widgetPositionRef = useRef<HelpWidgetPosition | null>(null);
+  const widgetDragRef = useRef<HelpWidgetDrag | null>(null);
+  const suppressWidgetClickRef = useRef(false);
+  const updateWidgetPosition = useCallback((position: HelpWidgetPosition | null) => {
+    widgetPositionRef.current = position;
+    setWidgetPosition(position);
+  }, []);
 
   const suggestions = useMemo(() => {
     const matches = faqs.filter((faq) => faq.routes.some((route) => routeMatches(route, pathname)));
@@ -58,6 +103,108 @@ export function HelpAssistant() {
       to: courseForAssessment ? `/course/${courseForAssessment.id}` : '/semesters',
     },
   ];
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(HELP_WIDGET_POSITION_KEY);
+      if (!saved) return;
+      const parsed: unknown = JSON.parse(saved);
+      if (!parsed || typeof parsed !== 'object') throw new Error('Saved position has an invalid format.');
+      const candidate = parsed as Record<string, unknown>;
+      if (typeof candidate.left !== 'number' || !Number.isFinite(candidate.left)
+        || typeof candidate.top !== 'number' || !Number.isFinite(candidate.top)) {
+        throw new Error('Saved position coordinates are invalid.');
+      }
+      const button = triggerRef.current;
+      if (!button) return;
+      const position = clampHelpWidgetPosition({ left: candidate.left, top: candidate.top }, button);
+      updateWidgetPosition(position);
+      saveHelpWidgetPosition(position);
+    } catch (error) {
+      console.error('Unable to restore the CGP Help button position.', error);
+    }
+  }, [updateWidgetPosition]);
+
+  useEffect(() => {
+    const clampCurrentPosition = () => {
+      const position = widgetPositionRef.current;
+      const button = triggerRef.current;
+      if (!position || !button) return;
+      const next = clampHelpWidgetPosition(position, button);
+      if (next.left !== position.left || next.top !== position.top) {
+        updateWidgetPosition(next);
+        saveHelpWidgetPosition(next);
+      }
+    };
+    window.addEventListener('resize', clampCurrentPosition);
+    return () => window.removeEventListener('resize', clampCurrentPosition);
+  }, [updateWidgetPosition]);
+
+  const handleWidgetPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    widgetDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleWidgetPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = widgetDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+    drag.moved = true;
+    setDraggingWidget(true);
+    event.preventDefault();
+    updateWidgetPosition(clampHelpWidgetPosition({
+      left: drag.startLeft + deltaX,
+      top: drag.startTop + deltaY,
+    }, event.currentTarget));
+  };
+
+  const finishWidgetDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = widgetDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    widgetDragRef.current = null;
+    setDraggingWidget(false);
+    if (drag.moved) {
+      const position = widgetPositionRef.current;
+      if (position) saveHelpWidgetPosition(position);
+      suppressWidgetClickRef.current = true;
+      window.setTimeout(() => { suppressWidgetClickRef.current = false; }, 400);
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handleWidgetKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!event.altKey) return;
+    const step = event.shiftKey ? 40 : 16;
+    const direction = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const current = widgetPositionRef.current ?? { left: rect.left, top: rect.top };
+    const position = clampHelpWidgetPosition({
+      left: current.left + direction[0],
+      top: current.top + direction[1],
+    }, event.currentTarget);
+    updateWidgetPosition(position);
+    saveHelpWidgetPosition(position);
+  };
 
   useEffect(() => {
     const updateConnectivity = () => setOnline(navigator.onLine);
@@ -161,13 +308,27 @@ export function HelpAssistant() {
       <button
         ref={triggerRef}
         type="button"
-        className="fixed bottom-5 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary-700 text-white shadow-lg transition hover:bg-primary-800 focus:outline-none focus:ring-4 focus:ring-primary-300 print:hidden"
-        style={{ bottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
+        className={`fixed z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary-700 text-white shadow-lg transition hover:bg-primary-800 focus:outline-none focus:ring-4 focus:ring-primary-300 print:hidden ${draggingWidget ? 'cursor-grabbing' : 'cursor-grab'}`}
+        style={widgetPosition
+          ? { left: `${widgetPosition.left}px`, top: `${widgetPosition.top}px`, touchAction: 'none' }
+          : { right: '1rem', bottom: 'calc(1.25rem + env(safe-area-inset-bottom))', touchAction: 'none' }}
         aria-label="Open CGP help"
-        title="Help"
+        aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown"
+        title="Drag to move. Use Alt+Arrow keys to reposition."
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={(event) => {
+          if (suppressWidgetClickRef.current) {
+            event.preventDefault();
+            return;
+          }
+          setOpen(true);
+        }}
+        onPointerDown={handleWidgetPointerDown}
+        onPointerMove={handleWidgetPointerMove}
+        onPointerUp={finishWidgetDrag}
+        onPointerCancel={finishWidgetDrag}
+        onKeyDown={handleWidgetKeyDown}
       >
         <CircleHelp className="h-6 w-6" aria-hidden="true" />
       </button>
