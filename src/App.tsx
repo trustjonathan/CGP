@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { SemestersPage } from '@/pages/SemestersPage';
@@ -14,14 +14,14 @@ import { AppDataProvider, useAppData } from '@/lib/useAppData';
 import { ReleasePage } from '@/pages/ReleasePage';
 import { SyncStatusToast } from '@/components/SyncStatusToast';
 import { HelpAssistant } from '@/components/HelpAssistant';
-import { ShareSetupPage } from '@/pages/ShareSetupPage';
-import { ImportSetupPage } from '@/pages/ImportSetupPage';
 import { SyncSettingsPage } from '@/pages/SyncSettingsPage';
 import { WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PublicImportPage } from '@/pages/PublicImportPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { SetupsPage } from '@/pages/SetupsPage';
+import { ImportSetupPage } from '@/pages/ImportSetupPage';
 
 function App() {
   return (
@@ -130,7 +130,7 @@ function CloudWorkspace() {
   return (
     <div className="flex min-h-screen bg-ink-50">
       <Sidebar />
-      <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6 pt-20 lg:pt-6 max-w-6xl mx-auto w-full">
+      <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6 pb-24 pt-20 lg:pb-6 lg:pt-6 max-w-6xl mx-auto w-full">
         <SyncStatusToast
           syncError={syncError}
           syncing={syncing}
@@ -148,9 +148,10 @@ function CloudWorkspace() {
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/simulator" element={<SimulatorPage />} />
           <Route path="/vault" element={<MultiVaultManager />} />
-          <Route path="/share-setup" element={<ShareSetupPage />} />
+          <Route path="/setups" element={<SetupsPage />} />
+          <Route path="/share-setup" element={<Navigate to="/setups?tab=share" replace />} />
           <Route path="/import/:token" element={<ImportSetupPage />} />
-          <Route path="/import" element={<ImportSetupPage />} />
+          <Route path="/import" element={<Navigate to="/setups?tab=import" replace />} />
           <Route path="/settings/sync" element={<SyncSettingsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />

@@ -7,6 +7,7 @@ import {
   BookOpen,
   Award,
   Layers,
+  CalendarDays,
   ArrowRight,
   Sparkles,
   RefreshCw,
@@ -296,13 +297,37 @@ export function DashboardPage() {
 
             {/* Stats grid */}
             <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-              <StatCard
-                label="Target CGPA"
-                value={targetIsSet ? targetCGPA.toFixed(2) : '--'}
-                icon={Target}
-                color="accent"
-                hint={targetIsSet ? targetSummary(data.settings) : 'Set a goal when ready'}
-              />
+              <section className="card flex flex-col justify-center p-4 sm:p-5" aria-labelledby="target-progress-title">
+                <div className="flex items-center gap-2 text-sm text-ink-500">
+                  <Target className="h-4 w-4 text-primary-600" aria-hidden="true" />
+                  <h2 id="target-progress-title" className="font-medium">CGPA goal</h2>
+                </div>
+                <p className="mt-2 flex flex-wrap items-baseline gap-x-2 font-display text-lg font-bold text-ink-900 tabular-nums">
+                  <span>Current {currentCGPA?.toFixed(2) ?? '--'}</span>
+                  <span aria-hidden="true" className="text-sm text-ink-400">→</span>
+                  <span>Target {targetIsSet ? targetCGPA.toFixed(2) : '--'}</span>
+                </p>
+                <div
+                  className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-100"
+                  role="progressbar"
+                  aria-label="Progress toward CGPA target"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={targetIsSet && currentCGPA !== null
+                    ? Math.round(targetCGPA > 0 ? Math.min(100, (currentCGPA / targetCGPA) * 100) : 100)
+                    : 0}
+                >
+                  <div
+                    className="h-full rounded-full bg-primary-600 transition-[width]"
+                    style={{
+                      width: `${targetIsSet && currentCGPA !== null
+                        ? Math.min(100, targetCGPA > 0 ? (currentCGPA / targetCGPA) * 100 : 100)
+                        : 0}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 truncate text-xs text-ink-500">{targetIsSet ? targetSummary(data.settings) : 'Set a goal when ready'}</p>
+              </section>
               <StatCard
                 label="Completed Credits"
                 value={completedCU}
@@ -326,6 +351,16 @@ export function DashboardPage() {
               />
             </div>
           </div>
+
+          <section className="card flex items-start gap-3 p-4" aria-labelledby="coming-up-title">
+            <div className="rounded-xl bg-primary-50 p-2 text-primary-700">
+              <CalendarDays className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 id="coming-up-title" className="font-display font-semibold text-ink-900">Coming up</h2>
+              <p className="mt-1 text-sm text-ink-500">No upcoming academic dates are saved yet.</p>
+            </div>
+          </section>
 
           {courseForecasts.length > 0 && (
             <section className="card p-5" aria-labelledby="course-forecasts-heading">
