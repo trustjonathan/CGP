@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -17,9 +17,15 @@ import {
   Download,
   Share2,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useAppData } from '@/lib/useAppData';
 import { useAuth } from '@/contexts/useAuth';
+import { targetSummary } from '@/lib/gradingConfig';
+
+const MIN_SIDEBAR_WIDTH = 224;
+const MAX_SIDEBAR_WIDTH = 360;
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -35,8 +41,12 @@ const navItems = [
 ];
 
 export function Sidebar() {
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(256);
+  const resizing = useRef(false);
   const [now, setNow] = useState(new Date());
   const { data, updateSettings } = useAppData();
   const [profileName, setProfileName] = useState(data.settings.profileName || '');
@@ -44,6 +54,23 @@ export function Sidebar() {
   const [signOutError, setSignOutError] = useState('');
   const [signingOut, setSigningOut] = useState(false);
   const { user, signOut } = useAuth();
+
+  useEffect(() => {
+    const resize = (event: PointerEvent) => {
+      if (resizing.current) {
+        setSidebarWidth(Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, event.clientX)));
+      }
+    };
+    const stopResizing = () => { resizing.current = false; };
+    window.addEventListener('pointermove', resize);
+    window.addEventListener('pointerup', stopResizing);
+    window.addEventListener('pointercancel', stopResizing);
+    return () => {
+      window.removeEventListener('pointermove', resize);
+      window.removeEventListener('pointerup', stopResizing);
+      window.removeEventListener('pointercancel', stopResizing);
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -107,19 +134,29 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-64 overflow-y-auto overscroll-contain bg-white border-r border-ink-200 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
+        style={{ '--sidebar-width': `${collapsed ? 72 : sidebarWidth}px` } as CSSProperties}
+        className={`fixed top-0 left-0 z-50 h-full w-[min(18rem,88vw)] max-w-[88vw] overflow-y-auto overscroll-contain bg-white border-r border-ink-200 flex flex-col transition-transform duration-300 lg:w-[var(--sidebar-width)] lg:max-w-none lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Logo */}
-        <div className="h-16 shrink-0 flex items-center gap-3 px-5 border-b border-ink-100">
+        <div className={`h-16 shrink-0 flex items-center gap-3 border-b border-ink-100 ${collapsed ? 'justify-center px-2' : 'px-5'}`}>
           <img src="/cgp-mark.svg" alt="" className="w-9 h-9 rounded-xl shadow-sm" />
-          <div className="min-w-0">
+          {!collapsed && <div className="min-w-0">
             <div className="font-display font-bold tracking-tight text-ink-900 text-base leading-tight">
               CGP
             </div>
             <div className="text-[10px] font-semibold tracking-[0.14em] text-ink-400">ACADEMIC SUITE</div>
-          </div>
+          </div>}
+          <button
+            type="button"
+            className="ml-auto hidden rounded-lg p-1.5 text-ink-500 hover:bg-ink-100 hover:text-ink-900 lg:block"
+            onClick={() => setCollapsed((value) => !value)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
           <button
             onClick={() => setMobileOpen(false)}
             className="ml-auto lg:hidden p-1.5 rounded-lg text-ink-400 hover:bg-ink-100"
@@ -129,6 +166,17 @@ export function Sidebar() {
         </div>
 
         {/* Nav */}
+        <button
+          type="button"
+          onClick={() => { navigate('/settings'); setMobileOpen(false); }}
+          className={`mx-3 mt-3 flex items-center rounded-xl bg-primary-50 text-primary-800 hover:bg-primary-100 ${collapsed ? 'justify-center p-3' : 'gap-2 px-3 py-2'}`}
+          title={`Target: ${targetSummary(data.settings)}`}
+          aria-label={`Edit target: ${targetSummary(data.settings)}`}
+        >
+          <Target className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {!collapsed && <span className="truncate text-sm font-semibold">Target: {targetSummary(data.settings)}</span>}
+        </button>
+
         <nav className="flex-1 px-3 py-4 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -138,8 +186,10 @@ export function Sidebar() {
                 to={item.to}
                 end={item.end}
                 onClick={() => setMobileOpen(false)}
+                title={collapsed ? item.label : undefined}
+                aria-label={item.label}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  `flex items-center rounded-lg py-2.5 text-sm font-medium transition-colors ${collapsed ? 'justify-center px-2' : 'gap-3 px-3'} ${
                     isActive
                       ? 'bg-primary-50 text-primary-700'
                       : 'text-ink-600 hover:bg-ink-50 hover:text-ink-900'
@@ -147,15 +197,15 @@ export function Sidebar() {
                 }
               >
                 <Icon className="w-[18px] h-[18px]" />
-                {item.label}
+                {!collapsed && item.label}
               </NavLink>
             );
           })}
         </nav>
 
-        <div className="px-3 pb-4 space-y-3">
+        <div className={`px-3 pb-4 space-y-3 ${collapsed ? 'px-2' : ''}`}>
           {signOutError && <p role="alert" className="rounded-lg bg-error-50 px-3 py-2 text-xs text-error-700">{signOutError}</p>}
-          <div className="flex items-center gap-2 px-1">
+          {!collapsed && <div className="flex items-center gap-2 px-1">
             <div className="min-w-0 flex-1">
               <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-400">Signed in</span>
               <span className="block truncate text-xs text-ink-600">{user?.email}</span>
@@ -171,37 +221,48 @@ export function Sidebar() {
               <LogOut className="h-4 w-4" />
               <span>{signingOut ? 'Signing out' : 'Sign out'}</span>
             </button>
-          </div>
-          <button onClick={() => setProfileOpen(true)} className="w-full flex items-center gap-3 rounded-xl border border-ink-200 p-3 text-left hover:bg-ink-50 transition-colors">
+          </div>}
+          <button onClick={() => setProfileOpen(true)} className={`w-full flex items-center rounded-xl border border-ink-200 p-3 text-left hover:bg-ink-50 transition-colors ${collapsed ? 'justify-center' : 'gap-3'}`} aria-label="Personalize profile">
             {data.settings.profilePicture ? <img src={data.settings.profilePicture} alt="Profile" className="w-10 h-10 rounded-full object-cover" /> : <div className="w-10 h-10 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center"><UserRound className="w-5 h-5" /></div>}
-            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-ink-900 truncate">{profileLabel}</span><span className="block text-xs text-ink-400 truncate">{data.settings.university || 'Add university'}</span></span>
-            <Pencil className="w-4 h-4 text-ink-400" />
+            {!collapsed && <><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-ink-900 truncate">{profileLabel}</span><span className="block text-xs text-ink-400 truncate">{data.settings.university || 'Add university'}</span></span><Pencil className="w-4 h-4 text-ink-400" /></>}
           </button>
-          <div className="rounded-xl bg-ink-50 border border-ink-100 p-3">
+          {!collapsed && <div className="rounded-xl bg-ink-50 border border-ink-100 p-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-ink-700"><Clock3 className="w-3.5 h-3.5 text-primary-600" />{now.toLocaleDateString(undefined, { weekday: 'long' })}</div>
             <div className="font-display font-bold text-lg text-ink-900 mt-1">{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             <div className="text-xs text-ink-500">{now.toLocaleDateString()}</div>
-          </div>
-          <div className="rounded-xl border border-ink-200 p-3">
+          </div>}
+          {!collapsed && <div className="rounded-xl border border-ink-200 p-3">
             <div className="flex items-center justify-between mb-2"><span className="text-xs font-semibold text-ink-700">{monthLabel}</span><CalendarDays className="w-3.5 h-3.5 text-primary-600" /></div>
             <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-ink-400 mb-1">{['S','M','T','W','T','F','S'].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
             <div className="grid grid-cols-7 gap-1 text-center text-[10px]">{Array.from({ length: firstDay }, (_, index) => <span key={`empty-${index}`} />)}{Array.from({ length: monthDays }, (_, index) => { const day = index + 1; return <span key={day} className={`py-0.5 rounded ${day === now.getDate() ? 'bg-primary-600 text-white font-bold' : 'text-ink-600'}`}>{day}</span>; })}</div>
-          </div>
+          </div>}
         </div>
 
-        {/* Target widget */}
-        <div className="px-3 pb-4">
-          <div className="rounded-xl bg-gradient-to-br from-primary-600 to-primary-800 p-4 text-white">
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="w-4 h-4" />
-              <span className="text-xs font-semibold uppercase tracking-wide opacity-90">
-                Target CGPA
-              </span>
-            </div>
-            <div className="font-display font-bold text-3xl">5.00</div>
-            <div className="text-xs opacity-80 mt-1">On a 5.0 grading scale</div>
-          </div>
-        </div>
+        <div
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          aria-valuemin={MIN_SIDEBAR_WIDTH}
+          aria-valuemax={MAX_SIDEBAR_WIDTH}
+          aria-valuenow={sidebarWidth}
+          tabIndex={collapsed ? -1 : 0}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || collapsed) return;
+            resizing.current = true;
+            event.preventDefault();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowLeft') {
+              event.preventDefault();
+              setSidebarWidth((value) => Math.max(MIN_SIDEBAR_WIDTH, value - 16));
+            }
+            if (event.key === 'ArrowRight') {
+              event.preventDefault();
+              setSidebarWidth((value) => Math.min(MAX_SIDEBAR_WIDTH, value + 16));
+            }
+          }}
+          className="absolute right-0 top-0 hidden h-full w-1 cursor-col-resize touch-none hover:bg-primary-300 focus-visible:bg-primary-500 lg:block"
+        />
       </aside>
 
       {profileOpen && (
@@ -219,7 +280,7 @@ export function Sidebar() {
       )}
 
       {/* Spacer for desktop */}
-      <div className="hidden lg:block w-64 flex-shrink-0" />
+      <div className="hidden lg:block flex-shrink-0" style={{ width: collapsed ? 72 : sidebarWidth }} />
     </>
   );
 }

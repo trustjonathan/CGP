@@ -25,13 +25,19 @@ import {
   getGradeColor,
   formatGPA,
   totalCompletedCredits,
-  TARGET_CGPA,
+  MAX_GRADE_POINT,
+  getGradePoint,
 } from '@/lib/types';
+import { targetPercentForSettings, targetSummary } from '@/lib/gradingConfig';
 import { ProgressRing, ProgressBar, StatCard, EmptyState } from '@/components/ui';
 
 export function AnalyticsPage() {
   const { data } = useAppData();
   const currentCGPA = cgpa(data.courses);
+  const targetIsSet = data.settings.targetSet !== false;
+  const targetCGPA = targetIsSet ? data.settings.targetCGPA : MAX_GRADE_POINT;
+  const targetPercent = targetPercentForSettings(data.settings);
+  const targetLabel = targetSummary(data.settings);
   const hasData = data.courses.length > 0;
 
   if (!hasData) {
@@ -76,11 +82,11 @@ export function AnalyticsPage() {
     .sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0));
 
   const barColors = ['#16a34a', '#2563eb', '#d946ef', '#f59e0b', '#ef4444'];
-  const ringColor =
-    currentCGPA === null ? '#94a3b8'
-    : currentCGPA >= TARGET_CGPA ? '#16a34a'
-    : currentCGPA >= 4.0 ? '#2563eb'
-    : '#f59e0b';
+  const ringGradeColor = currentCGPA === null ? 'error' : getGradeColor(currentCGPA);
+  const ringColor = currentCGPA === null ? '#94a3b8'
+    : targetIsSet && currentCGPA >= targetCGPA ? '#16a34a'
+      : ringGradeColor === 'primary' ? '#2563eb'
+        : ringGradeColor === 'warning' ? '#f59e0b' : '#ef4444';
 
   return (
     <div className="space-y-6">
@@ -95,11 +101,11 @@ export function AnalyticsPage() {
           label="Current CGPA"
           value={formatGPA(currentCGPA)}
           icon={Target}
-          color={currentCGPA !== null && currentCGPA >= TARGET_CGPA ? 'success' : 'primary'}
+          color={currentCGPA !== null && currentCGPA >= targetCGPA ? 'success' : 'primary'}
         />
         <StatCard
           label="Target CGPA"
-          value={TARGET_CGPA.toFixed(2)}
+          value={targetIsSet ? targetCGPA.toFixed(2) : '--'}
           icon={Award}
           color="accent"
         />
@@ -131,12 +137,12 @@ export function AnalyticsPage() {
             <BarChart data={semesterData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} />
-              <YAxis domain={[0, 5]} tick={{ fontSize: 12, fill: '#64748b' }} />
+              <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 12, fill: '#64748b' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                 formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'GPA']}
               />
-              <ReferenceLine y={5} stroke="#d946ef" strokeDasharray="5 5" />
+              {targetIsSet && <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="5 5" />}
               <Bar dataKey="gpa" radius={[6, 6, 0, 0]} maxBarSize={60}>
                 {semesterData.map((_, i) => (
                   <Cell key={i} fill={barColors[i % barColors.length]} />
@@ -152,18 +158,20 @@ export function AnalyticsPage() {
         {/* CGPA Ring */}
         <div className="card p-6 flex flex-col items-center justify-center">
           <h3 className="font-display font-semibold text-ink-900 mb-4">Overall CGPA</h3>
-          <ProgressRing value={currentCGPA} max={5} size={140} stroke={12} label="out of 5.0" color={ringColor} />
+          <ProgressRing value={currentCGPA} max={MAX_GRADE_POINT} size={140} stroke={12} label={`out of ${MAX_GRADE_POINT.toFixed(1)}`} color={ringColor} />
           <div className="mt-4 text-center">
             {currentCGPA !== null && (
               <>
                 <div className="text-sm text-ink-500">
-                  {currentCGPA >= TARGET_CGPA ? (
+                  {!targetIsSet ? (
+                    <span className="text-ink-500">Set a target in Settings.</span>
+                  ) : currentCGPA >= targetCGPA ? (
                     <span className="text-success-600 font-medium flex items-center gap-1 justify-center">
                       <TrendingUp className="w-4 h-4" /> Meeting your target!
                     </span>
                   ) : (
                     <span className="text-warning-600 font-medium">
-                      {(TARGET_CGPA - currentCGPA).toFixed(2)} points from target
+                      {(targetCGPA - currentCGPA).toFixed(2)} points from target
                     </span>
                   )}
                 </div>
@@ -236,11 +244,14 @@ export function AnalyticsPage() {
                 contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                 formatter={(v) => [`${typeof v === 'number' ? v.toFixed(1) : '0.0'}%`, 'Score']}
               />
-              <ReferenceLine x={80} stroke="#16a34a" strokeDasharray="4 4" label={{ value: 'A (80%)', fontSize: 10, fill: '#16a34a', position: 'top' }} />
+              {targetIsSet && <ReferenceLine x={targetPercent} stroke="#16a34a" strokeDasharray="4 4" label={{ value: `${targetLabel} · ${targetPercent}%`, fontSize: 10, fill: '#16a34a', position: 'top' }} />}
               <Bar dataKey="percent" radius={[0, 4, 4, 0]} maxBarSize={28}>
                 {courseData.map((d, i) => {
                   const pct = d.percent ?? 0;
-                  const fill = pct >= 80 ? '#16a34a' : pct >= 60 ? '#2563eb' : pct >= 50 ? '#f59e0b' : '#ef4444';
+                  const gradeColor = getGradeColor(getGradePoint(pct));
+                  const fill = gradeColor === 'success' ? '#16a34a'
+                    : gradeColor === 'primary' ? '#2563eb'
+                    : gradeColor === 'warning' ? '#f59e0b' : '#ef4444';
                   return <Cell key={i} fill={fill} />;
                 })}
               </Bar>

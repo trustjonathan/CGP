@@ -4,6 +4,7 @@ import { AlertCircle, Check, ClipboardPaste, Download, LoaderCircle, RefreshCw, 
 import { useAppData } from '@/lib/useAppData';
 import type { CloudRecord } from '@/lib/useAppData';
 import { platformAdapter } from '@/lib/platformAdapter';
+import { defaultCourseTarget } from '@/lib/gradingConfig';
 import { supabase } from '@/lib/supabase';
 import { getSetupToken, normalizeSetupKey, parseSharedSetupResult } from '@/lib/sharedSetup';
 import type { SharedSetupPreview } from '@/lib/sharedSetup';
@@ -274,7 +275,7 @@ export function ImportSetupPage({ onImported }: { onImported?: () => void } = {}
             name: templateCourse.name.trim(),
             code: templateCourse.code?.trim() ?? '',
             creditUnits: templateCourse.creditUnits,
-            targetGradePoint: templateCourse.targetGradePoint ?? 5,
+            targetGradePoint: defaultCourseTarget(localData.settings),
             semesterId: destinationSemester.id,
             assessments,
             topics,
@@ -378,7 +379,7 @@ export function ImportSetupPage({ onImported }: { onImported?: () => void } = {}
                               <input type="checkbox" className="mt-1 accent-primary-600" checked={selectedCourses[selectionKey] ?? false} disabled={!selectedSemesters[semesterId]} onChange={(event) => toggleCourse(semesterIndex, courseIndex, event.target.checked)} />
                               <span className="min-w-0 flex-1">
                                 <span className="block font-semibold text-ink-900">{course.name}{course.code && <span className="ml-2 font-mono text-xs text-ink-500">{course.code}</span>}</span>
-                                <span className="mt-1 block text-xs text-ink-600">{course.creditUnits} CU · target {course.targetGradePoint ?? 5} GP</span>
+                                <span className="mt-1 block text-xs text-ink-600">{course.creditUnits} CU · imports with your default target</span>
                                 {preview.include_assessments && <span className="mt-1 block text-xs text-ink-600">Assessment structure: {(course.assessments ?? []).map((assessment) => `${assessment.name} (${assessment.weight}%, ${assessment.total} marks)`).join(', ') || 'None'}</span>}
                                 {preview.include_topics && <span className="mt-1 block text-xs text-ink-600">Topics: {(course.topics ?? []).map((topic) => topic.title).join(', ') || 'None'}</span>}
                               </span>

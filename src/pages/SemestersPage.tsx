@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAppData } from '@/lib/useAppData';
 import {
+  GRADE_SCALE,
   semesterGPA,
   formatGPA,
   type Semester,
@@ -23,6 +24,7 @@ import {
 import { Modal } from '@/components/ui/Modal';
 import { GradeBadge, ProgressBar, EmptyState } from '@/components/ui';
 import { Link } from 'react-router-dom';
+import { defaultCourseTarget } from '@/lib/gradingConfig';
 
 export function SemestersPage() {
   const {
@@ -63,7 +65,7 @@ export function SemestersPage() {
   const [courseName, setCourseName] = useState('');
   const [courseCode, setCourseCode] = useState('');
   const [courseCU, setCourseCU] = useState(3);
-  const [courseTargetGP, setCourseTargetGP] = useState(5.0);
+  const [courseTargetGP, setCourseTargetGP] = useState(() => defaultCourseTarget(data.settings));
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -88,7 +90,7 @@ export function SemestersPage() {
     setCourseName('');
     setCourseCode('');
     setCourseCU(3);
-    setCourseTargetGP(5.0);
+    setCourseTargetGP(defaultCourseTarget(data.settings));
     setCourseModalSemId(null);
   };
 
@@ -144,7 +146,10 @@ export function SemestersPage() {
                   gpa={gpa}
                   isOpen={isOpen}
                   onToggle={() => toggleExpand(sem.id)}
-                  onAddCourse={() => setCourseModalSemId(sem.id)}
+                  onAddCourse={() => {
+                    setCourseTargetGP(defaultCourseTarget(data.settings));
+                    setCourseModalSemId(sem.id);
+                  }}
                   onDeleteSemester={() => handleDeleteSemester(sem.id)}
                   onEditSemester={() => openEditSemester(sem)}
                   onDeleteCourse={handleDeleteCourse}
@@ -223,11 +228,9 @@ export function SemestersPage() {
             <div>
               <label className="label">Target Grade Point</label>
               <select value={courseTargetGP} onChange={(e) => setCourseTargetGP(parseFloat(e.target.value))} className="input">
-                <option value={5.0}>5.0 (A)</option>
-                <option value={4.5}>4.5 (B+)</option>
-                <option value={4.0}>4.0 (B)</option>
-                <option value={3.5}>3.5 (C+)</option>
-                <option value={3.0}>3.0 (C)</option>
+                {GRADE_SCALE.filter((grade) => grade.label !== 'F').map((grade) => (
+                  <option key={grade.label} value={grade.gp}>{grade.gp.toFixed(1)} ({grade.label})</option>
+                ))}
               </select>
             </div>
           </div>

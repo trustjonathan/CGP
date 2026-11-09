@@ -28,16 +28,25 @@ import {
   semesterGPA,
   courseAggregatePercent,
   getGradeLabel,
-  TARGET_CGPA,
+  getGradeColor,
+  MAX_GRADE_POINT,
   formatGPA,
 } from '@/lib/types';
 import { runWhatIf } from '@/lib/forecast';
+import { targetPercentForCourse, targetPercentForSettings, targetSummary } from '@/lib/gradingConfig';
 import { ProgressBar, EmptyState } from '@/components/ui';
 
 export function SimulatorPage() {
   const { data } = useAppData();
+  const targetCGPA = data.settings.targetCGPA;
+  const targetPercent = targetPercentForSettings(data.settings);
+  const targetLabel = targetSummary(data.settings);
   const [projectedScores, setProjectedScores] = useState<Record<string, number>>({});
-  const [globalScore, setGlobalScore] = useState(80);
+  const [globalScore, setGlobalScore] = useState<number | null>(null);
+  const effectiveGlobalScore = globalScore ?? targetPercent;
+  const defaultScores = useMemo(() => Object.fromEntries(
+    data.courses.map((course) => [course.id, targetPercentForCourse(course, data.settings)]),
+  ), [data.courses, data.settings]);
 
   const currentCGPA = cgpa(data.courses);
 
@@ -49,18 +58,19 @@ export function SimulatorPage() {
   }, [data.courses]);
 
   const result = useMemo(
-    () => runWhatIf(data.courses, projectedScores),
-    [data.courses, projectedScores]
+    () => runWhatIf(data.courses, projectedScores, defaultScores),
+    [data.courses, defaultScores, projectedScores]
   );
 
-  const scenarioData = useMemo(() => [0, 20, 40, 60, 70, 80, 90, 100].map((score) => ({
+  const scenarioData = useMemo(() => [...new Set([0, 20, 40, 60, 70, targetPercent, 90, 100])]
+    .sort((a, b) => a - b).map((score) => ({
     score,
     cgpa: runWhatIf(data.courses, Object.fromEntries(
       data.courses
         .filter((course) => courseAggregatePercent(course) === null)
         .map((course) => [course.id, score])
-    )).projectedCGPA,
-  })), [data.courses]);
+    ), defaultScores).projectedCGPA,
+  })), [data.courses, defaultScores, targetPercent]);
 
   const setScore = useCallback((courseId: string, score: number) => {
     setProjectedScores((prev) => ({ ...prev, [courseId]: score }));
@@ -71,15 +81,15 @@ export function SimulatorPage() {
     for (const c of data.courses) {
       const pct = courseAggregatePercent(c);
       if (pct === null) {
-        updates[c.id] = globalScore;
+        updates[c.id] = effectiveGlobalScore;
       }
     }
     setProjectedScores(updates);
-  }, [data.courses, globalScore]);
+  }, [data.courses, effectiveGlobalScore]);
 
   const reset = useCallback(() => {
     setProjectedScores({});
-    setGlobalScore(80);
+    setGlobalScore(null);
   }, []);
 
   if (data.courses.length === 0) {
@@ -98,9 +108,12 @@ export function SimulatorPage() {
     );
   }
 
-  const gapToTarget = TARGET_CGPA - result.projectedCGPA;
-  const meetsTarget = result.projectedCGPA >= TARGET_CGPA;
-  const projectedRingColor = meetsTarget ? '#16a34a' : result.projectedCGPA >= 4.0 ? '#2563eb' : '#f59e0b';
+  const gapToTarget = targetCGPA - result.projectedCGPA;
+  const meetsTarget = result.projectedCGPA >= targetCGPA;
+  const projectedGradeColor = getGradeColor(result.projectedCGPA);
+  const projectedRingColor = meetsTarget ? '#16a34a'
+    : projectedGradeColor === 'primary' ? '#2563eb'
+      : projectedGradeColor === 'warning' ? '#f59e0b' : '#ef4444';
 
   // Chart data for projected GP per course
   const chartData = result.courseProjections
@@ -116,7 +129,7 @@ export function SimulatorPage() {
       grade: cp.gradeLabel,
       percent: cp.projectedPercent,
       isProjected: currentPercent === null,
-      projectedScore: projectedScores[course.id] ?? 80,
+      projectedScore: projectedScores[course.id] ?? defaultScores[course.id],
     };
     });
 
@@ -174,7 +187,7 @@ export function SimulatorPage() {
                 strokeWidth={12}
                 strokeLinecap="round"
                 strokeDasharray={2 * Math.PI * 70}
-                strokeDashoffset={2 * Math.PI * 70 * (1 - Math.min(1, result.projectedCGPA / 5))}
+                strokeDashoffset={2 * Math.PI * 70 * (1 - Math.min(1, result.projectedCGPA / MAX_GRADE_POINT))}
                 className="transition-all duration-700 ease-out"
               />
             </svg>
@@ -182,7 +195,7 @@ export function SimulatorPage() {
               <span className="font-display font-bold text-3xl text-ink-900">
                 {result.projectedCGPA.toFixed(2)}
               </span>
-              <span className="text-xs text-ink-500">out of 5.0</span>
+              <span className="text-xs text-ink-500">out of {MAX_GRADE_POINT.toFixed(1)}</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2">
@@ -209,7 +222,7 @@ export function SimulatorPage() {
                   {formatGPA(currentCGPA)}
                 </span>
               </div>
-              <ProgressBar value={currentCGPA ?? 0} max={5} color="primary" />
+              <ProgressBar value={currentCGPA ?? 0} max={MAX_GRADE_POINT} color="primary" />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -218,16 +231,17 @@ export function SimulatorPage() {
                   {result.projectedCGPA.toFixed(2)}
                 </span>
               </div>
-              <ProgressBar value={result.projectedCGPA} max={5} color={meetsTarget ? 'success' : 'warning'} />
+              <ProgressBar value={result.projectedCGPA} max={MAX_GRADE_POINT} color={meetsTarget ? 'success' : 'warning'} />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-medium text-ink-600">Target CGPA</span>
                 <span className="font-display font-bold text-lg text-accent-600">
-                  {TARGET_CGPA.toFixed(2)}
+                  {targetCGPA.toFixed(2)}
                 </span>
               </div>
-              <ProgressBar value={TARGET_CGPA} max={5} color="accent" />
+              <ProgressBar value={targetCGPA} max={MAX_GRADE_POINT} color="accent" />
+              <p className="mt-1 text-xs text-ink-500">Course target: {targetLabel} ({targetPercent}%)</p>
             </div>
           </div>
         </div>
@@ -247,13 +261,13 @@ export function SimulatorPage() {
             <LineChart data={scenarioData} margin={{ top: 10, right: 12, bottom: 0, left: -12 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="score" unit="%" tick={{ fontSize: 11, fill: '#64748b' }} />
-              <YAxis domain={[0, 5]} tick={{ fontSize: 11, fill: '#64748b' }} />
+              <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 11, fill: '#64748b' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                 formatter={(value) => [typeof value === 'number' ? value.toFixed(2) : '--', 'Projected CGPA']}
                 labelFormatter={(label) => `Unfinished assessment score: ${label}%`}
               />
-              <ReferenceLine y={TARGET_CGPA} stroke="#d946ef" strokeDasharray="5 5" label={{ value: 'Target', fontSize: 10, fill: '#a21caf' }} />
+              <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="5 5" label={{ value: 'Target', fontSize: 10, fill: '#a21caf' }} />
               <Line type="monotone" dataKey="cgpa" stroke="#2563eb" strokeWidth={3} dot={{ r: 4, fill: '#2563eb' }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -290,7 +304,7 @@ export function SimulatorPage() {
             <BarChart data={semesterData} margin={{ top: 10, right: 12, bottom: 0, left: -12 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
-              <YAxis domain={[0, 5]} tick={{ fontSize: 11, fill: '#64748b' }} />
+              <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 11, fill: '#64748b' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                 formatter={(value, name) => [typeof value === 'number' ? value.toFixed(2) : '--', name === 'current' ? 'Current GPA' : 'Projected GPA']}
@@ -316,12 +330,12 @@ export function SimulatorPage() {
                 type="range"
                 min="0"
                 max="100"
-                value={globalScore}
+                value={effectiveGlobalScore}
                 onChange={(e) => setGlobalScore(parseInt(e.target.value))}
                 className="flex-1 accent-primary-600"
               />
               <span className="font-mono font-bold text-lg text-ink-900 w-16 text-right">
-                {globalScore}%
+                {effectiveGlobalScore}%
               </span>
             </div>
           </div>
@@ -348,7 +362,7 @@ export function SimulatorPage() {
           {data.courses.map((course) => {
             const pct = courseAggregatePercent(course);
             const projection = result.courseProjections.find((cp) => cp.courseId === course.id);
-            const score = projectedScores[course.id] ?? 80;
+            const score = projectedScores[course.id] ?? defaultScores[course.id];
             const isUngraded = pct === null;
             const remainingWeight = course.assessments
               .filter((assessment) => assessment.weight > 0 && (assessment.obtained === null || assessment.total <= 0))
@@ -369,9 +383,9 @@ export function SimulatorPage() {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-sm font-semibold text-ink-900">{projection.projectedPercent.toFixed(1)}%</span>
                       <span className={`badge ${
-                        projection.projectedGP >= 4.5 ? 'bg-success-100 text-success-700' :
-                        projection.projectedGP >= 3.5 ? 'bg-primary-100 text-primary-700' :
-                        projection.projectedGP >= 2.0 ? 'bg-warning-100 text-warning-700' :
+                        getGradeColor(projection.projectedGP) === 'success' ? 'bg-success-100 text-success-700' :
+                        getGradeColor(projection.projectedGP) === 'primary' ? 'bg-primary-100 text-primary-700' :
+                        getGradeColor(projection.projectedGP) === 'warning' ? 'bg-warning-100 text-warning-700' :
                         'bg-error-100 text-error-700'
                       }`}>
                         {projection.gradeLabel} ({projection.projectedGP.toFixed(1)})
@@ -409,7 +423,7 @@ export function SimulatorPage() {
             <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
-              <YAxis domain={[0, 5]} tick={{ fontSize: 12, fill: '#64748b' }} />
+              <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 12, fill: '#64748b' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                 formatter={(v, _name, props) => {
@@ -418,10 +432,13 @@ export function SimulatorPage() {
                   return [`${numericValue.toFixed(2)} GP (${payload?.grade ?? ''})`, `${(payload?.percent ?? 0).toFixed(1)}%`];
                 }}
               />
-              <ReferenceLine y={5} stroke="#d946ef" strokeDasharray="4 4" />
+              <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="4 4" />
               <Bar dataKey="gp" radius={[6, 6, 0, 0]} maxBarSize={50}>
                 {chartData.map((d, i) => {
-                  const fill = d.gp >= 4.5 ? '#16a34a' : d.gp >= 3.5 ? '#2563eb' : d.gp >= 2.0 ? '#f59e0b' : '#ef4444';
+                  const gradeColor = getGradeColor(d.gp);
+                  const fill = gradeColor === 'success' ? '#16a34a'
+                    : gradeColor === 'primary' ? '#2563eb'
+                      : gradeColor === 'warning' ? '#f59e0b' : '#ef4444';
                   return <Cell key={i} fill={fill} />;
                 })}
               </Bar>

@@ -2,6 +2,7 @@ import { createContext, createElement, useCallback, useContext, useEffect, useRe
 import type { ReactNode } from 'react';
 import type { AppData, Semester, CourseUnit, Assessment, CourseDocument, CourseTopic } from './types';
 import { TARGET_CGPA, uid } from './types';
+import type { SettingsUpdate } from './gradingConfig';
 import { supabase } from './supabase';
 import { useAuth } from '@/contexts/useAuth';
 import {
@@ -464,7 +465,7 @@ function useAppDataState() {
     }));
   }, []);
 
-  const updateSettings = useCallback((updates: Partial<AppData['settings']>) => {
+  const updateSettings = useCallback((updates: SettingsUpdate) => {
     setData((d) => ({ ...d, settings: { ...d.settings, ...updates } }));
   }, []);
 
@@ -722,7 +723,7 @@ function useAppDataState() {
       name,
       code,
       creditUnits: cu,
-      targetGradePoint: 5.0,
+      targetGradePoint: TARGET_CGPA,
       semesterId: semId,
       assessments,
       topics: [],

@@ -125,7 +125,7 @@ export function PublicImportPage() {
                                   {course.code && <span className="font-mono text-xs text-ink-500">{course.code}</span>}
                                 </div>
                                 <p className="mt-1 text-xs text-ink-500">
-                                  {course.creditUnits} CU · target {course.targetGradePoint ?? 5} GP
+                                  {course.creditUnits} CU · uses your target when imported
                                 </p>
                                 {preview.include_assessments && (course.assessments?.length ?? 0) > 0 && (
                                   <p className="mt-1 text-xs leading-5 text-ink-600">

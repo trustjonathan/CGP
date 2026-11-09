@@ -41,11 +41,21 @@ import {
 } from '@/lib/onboarding';
 import {
   GRADE_SCALE,
+  minPercentForGradePoint,
   totalCredits,
   type Assessment,
   type CourseUnit,
   type Semester,
 } from '@/lib/types';
+import {
+  customTargetPercentForSettings,
+  gradePointForTargetChoice,
+  targetChoiceForSettings,
+  targetChoiceForGradePoint,
+  TARGET_OPTIONS,
+  type TargetChoice,
+} from '@/lib/gradingConfig';
+import { getGradePoint } from '@/lib/types';
 import {
   academicTotals,
   courseContributions,
@@ -65,12 +75,12 @@ import { EnterList } from '@/ui/effects/EnterList';
 import { StepTransition } from '@/ui/effects/StepTransition';
 import { useReducedMotionPreference } from '@/ui/effects/useReducedMotionPreference';
 
-const steps = ['Optional setup link', 'About you', 'Course units', 'Target CGPA', 'Any results yet?', 'Finish'];
+const steps = ['Optional setup link', 'About you', 'Course units', 'Your target', 'Any results yet?', 'Finish'];
 const stepDescriptions = [
   'Bring an existing CGP setup into this workspace, or start fresh.',
   'Choose your institution and add the programme and semester details you know.',
   'Add course units and credits now; you can fill in anything missing later.',
-  'A target is optional. Leave it blank if you have not decided yet.',
+  'Choose the grade or percentage you are aiming for; you can change it later in Settings.',
   'Add real results if you have them. Your preview updates after a brief pause.',
   'Review the details you entered and open your academic dashboard.',
 ];
@@ -181,9 +191,34 @@ function isOnboardingDraft(value: unknown): value is OnboardingDraft {
     && draft.scores !== null;
 }
 
+function isTargetChoice(value: unknown): value is TargetChoice {
+  return TARGET_OPTIONS.some((option) => option.value === value);
+}
+
 function draftFromSettings(data: ReturnType<typeof useAppData>['data']) {
   const saved = data.settings.onboardingDraft;
-  if (isOnboardingDraft(saved) && !saved.completed) return saved;
+  const savedCustomTarget = customTargetPercentForSettings(data.settings);
+  if (isOnboardingDraft(saved) && !saved.completed) {
+    const targetCGPA = saved.targetCGPA ?? data.settings.targetCGPA;
+    const savedCustom = saved.customTargetPercent ?? savedCustomTarget;
+    const targetChoice = isTargetChoice(saved.targetChoice)
+      ? saved.targetChoice
+      : savedCustom !== null
+        ? 'custom'
+        : saved.targetCGPA === null
+          ? 'A'
+          : targetChoiceForGradePoint(targetCGPA);
+    return {
+      ...saved,
+      targetCGPA,
+      targetChoice,
+      customTargetPercent: savedCustom
+        ?? (targetChoice === 'custom' && saved.targetCGPA !== null && saved.targetCGPA !== undefined
+          ? minPercentForGradePoint(saved.targetCGPA)
+          : null),
+    };
+  }
+  const targetCGPA = data.settings.targetCGPA;
   return {
     ...createOnboardingDraft(),
     university: data.settings.onboardingCompleted ? data.settings.university ?? '' : '',
@@ -191,9 +226,10 @@ function draftFromSettings(data: ReturnType<typeof useAppData>['data']) {
     yearOfStudy: data.settings.yearOfStudy ?? null,
     currentSemester: data.settings.currentSemester ?? 1,
     academicYear: data.settings.academicYear ?? createOnboardingDraft().academicYear,
-    targetCGPA: data.settings.targetSet === false || (!data.settings.onboardingCompleted && data.semesters.length === 0)
-      ? null
-      : data.settings.targetCGPA,
+    targetCGPA,
+    targetChoice: savedCustomTarget !== null ? 'custom' : targetChoiceForSettings(data.settings),
+    customTargetPercent: savedCustomTarget
+      ?? (targetChoiceForGradePoint(targetCGPA) === 'custom' ? 0 : null),
   };
 }
 
@@ -277,8 +313,10 @@ export function OnboardingPage() {
   const [saveError, setSaveError] = useState('');
   const [pasteCourses, setPasteCourses] = useState('');
   const [finishError, setFinishError] = useState('');
-  const [targetInput, setTargetInput] = useState(() => draft.targetCGPA === null ? '' : draft.targetCGPA.toFixed(2));
-  const [targetTouched, setTargetTouched] = useState(false);
+  const [targetInput, setTargetInput] = useState(() =>
+    draft.customTargetPercent === null || draft.customTargetPercent === undefined
+      ? ''
+      : String(draft.customTargetPercent));
   const [baselineInputs, setBaselineInputs] = useState({
     cgpa: '',
     creditsEarned: '',
@@ -323,8 +361,9 @@ export function OnboardingPage() {
         nextDraft = draftFromSettings(initialData.current);
       }
       setDraft(nextDraft);
-      setTargetInput(nextDraft.targetCGPA === null ? '' : nextDraft.targetCGPA.toFixed(2));
-      setTargetTouched(false);
+      setTargetInput(nextDraft.customTargetPercent === null || nextDraft.customTargetPercent === undefined
+        ? ''
+        : String(nextDraft.customTargetPercent));
       setPreviewScores({ ...nextDraft.scores });
       setScoreInputs(scoresToInputs(nextDraft.scores));
       setMetrics(validMetrics(saved?.metrics));
@@ -394,22 +433,6 @@ export function OnboardingPage() {
     return () => window.clearTimeout(timer);
   }, [baselineInputs]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const parsed = Number(targetInput);
-      setDraft((current) => ({
-        ...current,
-        targetCGPA: targetInput.trim() !== ''
-          && Number.isFinite(parsed)
-          && parsed >= 0
-          && parsed <= maximumGradePointForScale()
-          ? parsed
-          : null,
-      }));
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [targetInput]);
-
   const previewCourses = useMemo(() => draft.courses
     .filter((course) => course.name.trim())
     .map((course) => makePreviewCourse(course, previewScores[course.id] ?? null)), [draft.courses, previewScores]);
@@ -452,15 +475,8 @@ export function OnboardingPage() {
   const targetInputIsValid = targetInput.trim() !== ''
     && Number.isFinite(parsedTargetInput)
     && parsedTargetInput >= 0
-    && parsedTargetInput <= maximumGradePoint;
-  const targetInputIsPending = targetTouched && (
-    targetInputIsValid
-      ? draft.targetCGPA !== parsedTargetInput
-      : draft.targetCGPA !== null
-  );
-  const previewTarget = targetTouched
-    ? targetInputIsPending ? null : draft.targetCGPA
-    : draft.targetCGPA ?? (data.settings.targetSet === false ? null : data.settings.targetCGPA);
+    && parsedTargetInput <= 100;
+  const previewTarget = draft.targetCGPA;
   const weights = courseWeights(previewCourses);
   const contributions = courseContributions(currentSemesterCourses);
   const allContributions = courseContributions(statsCourses);
@@ -576,6 +592,12 @@ export function OnboardingPage() {
   const finish = () => {
     setFinishError('');
     try {
+      const targetChoice = draft.targetChoice ?? 'A';
+      const targetCGPA = gradePointForTargetChoice(targetChoice, draft.customTargetPercent);
+      if (targetCGPA === null) {
+        setFinishError('Enter a valid custom target percentage before finishing setup.');
+        return;
+      }
       const university = draft.university === 'Other' ? draft.otherUniversity.trim() : draft.university.trim();
       const academicYear = draft.academicYear.trim();
       const validCourses = draft.courses.filter((course) => course.name.trim());
@@ -591,7 +613,7 @@ export function OnboardingPage() {
           course.semesterId === semesterId
           && course.name.trim().toLocaleLowerCase() === courseDraft.name.trim().toLocaleLowerCase());
         const courseId = existing?.id
-          ?? addCourse(semesterId, courseDraft.name.trim(), '', courseDraft.creditUnits, 5);
+          ?? addCourse(semesterId, courseDraft.name.trim(), '', courseDraft.creditUnits, targetCGPA);
         if (existing) updateCourse(existing.id, { creditUnits: courseDraft.creditUnits });
         const score = draft.scores[courseDraft.id];
         if (score !== null && score !== undefined && (!existing || existing.assessments.length === 0)) {
@@ -609,8 +631,11 @@ export function OnboardingPage() {
         yearOfStudy: draft.yearOfStudy ?? data.settings.yearOfStudy,
         currentSemester: draft.currentSemester,
         academicYear: academicYear || data.settings.academicYear,
-        targetCGPA: draft.targetCGPA ?? data.settings.targetCGPA,
-        targetSet: draft.targetCGPA !== null ? true : (data.settings.targetSet ?? false),
+        targetCGPA,
+        targetSet: true,
+        customTargetPercent: targetChoice === 'custom' ? draft.customTargetPercent ?? null : null,
+        targetChoice,
+        legacyTargetPromptDismissed: true,
         onboardingCompleted: true,
         onboardingDraft: completedDraft,
       });
@@ -851,42 +876,77 @@ export function OnboardingPage() {
 
             {draft.currentStep === 3 && (
               <div className="space-y-4">
-                <p className="text-sm leading-6 text-ink-600">A target is optional. You can change it later in your CGP settings.</p>
+                <p className="text-sm leading-6 text-ink-600">Choose what you are aiming for. You can change this later in Settings.</p>
                 <div className="max-w-xs">
-                  <label htmlFor="onboarding-target-cgpa" className="label">Target CGPA (out of {maximumGradePoint})</label>
-                  <input
-                    id="onboarding-target-cgpa"
-                    type="number"
-                    min={0}
-                    max={maximumGradePoint}
-                    step={0.01}
-                    className="input tabular-nums"
-                    value={targetInput}
+                  <label htmlFor="onboarding-target-choice" className="label">What are you aiming for?</label>
+                  <select
+                    id="onboarding-target-choice"
+                    className="input"
+                    value={draft.targetChoice ?? 'A'}
                     onChange={(event) => {
-                      setTargetInput(event.target.value);
-                      setTargetTouched(true);
+                      const choice = event.target.value as TargetChoice;
+                      if (choice === 'custom') {
+                        setDraft((current) => ({
+                          ...current,
+                          targetChoice: choice,
+                          targetCGPA: null,
+                          customTargetPercent: null,
+                        }));
+                        setTargetInput('');
+                        return;
+                      }
+                      const targetCGPA = gradePointForTargetChoice(choice);
+                      setDraft((current) => ({
+                        ...current,
+                        targetChoice: choice,
+                        targetCGPA,
+                        customTargetPercent: null,
+                      }));
+                      setTargetInput('');
                     }}
-                    aria-describedby="onboarding-target-help"
-                    aria-invalid={targetInput.trim() !== '' && (
-                      !Number.isFinite(Number(targetInput))
-                      || Number(targetInput) < 0
-                      || Number(targetInput) > maximumGradePoint
-                    )}
-                    placeholder="Optional"
-                  />
-                  {targetInput.trim() !== '' && (
-                    Number.isFinite(Number(targetInput))
-                    && Number(targetInput) >= 0
-                    && Number(targetInput) <= maximumGradePoint
-                    && Number(targetInput) === maximumGradePoint
-                      ? <p className="mt-1 text-xs leading-5 text-warning-800 dark:text-warning-300">A target of {maximumGradePoint.toFixed(2)} requires the highest grade point in every course under this grading scale.</p>
-                      : (!Number.isFinite(Number(targetInput))
-                        || Number(targetInput) < 0
-                        || Number(targetInput) > maximumGradePoint)
-                        ? <p id="onboarding-target-error" role="alert" className="mt-1 text-xs leading-5 text-error-700 dark:text-error-300">Enter a target within the configured grade scale.</p>
-                        : null
+                  >
+                    {TARGET_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  {draft.targetChoice === 'custom' && (
+                    <div className="mt-3">
+                      <label htmlFor="onboarding-custom-target" className="label">Custom course target</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="onboarding-custom-target"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.1}
+                          className="input tabular-nums"
+                          value={targetInput}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            const parsed = Number(value);
+                            const valid = value.trim() !== '' && Number.isFinite(parsed) && parsed >= 0 && parsed <= 100;
+                            setTargetInput(value);
+                            setDraft((current) => ({
+                              ...current,
+                              customTargetPercent: valid ? parsed : null,
+                              targetCGPA: valid ? getGradePoint(parsed) : null,
+                            }));
+                          }}
+                          aria-describedby="onboarding-custom-target-help"
+                          aria-invalid={!targetInputIsValid}
+                        />
+                        <span className="text-sm text-ink-500">%</span>
+                      </div>
+                      {!targetInputIsValid && (
+                        <p role="alert" className="mt-1 text-xs leading-5 text-error-700 dark:text-error-300">
+                          Enter a target percentage from 0% to 100%.
+                        </p>
+                      )}
+                      <p id="onboarding-custom-target-help" className="mt-1 text-xs text-ink-600 dark:text-ink-300">
+                        Your exact percentage is retained; the global CGPA goal follows its grade-scale band.
+                      </p>
+                    </div>
                   )}
-                  <p id="onboarding-target-help" className="mt-1 text-xs text-ink-600 dark:text-ink-300">Leave blank to set a target later.</p>
                 </div>
               </div>
             )}
@@ -1008,7 +1068,7 @@ export function OnboardingPage() {
                 <Target className="h-4 w-4 text-primary-600" aria-hidden="true" /> Target and honours
               </h3>
               {previewTarget === null ? (
-                <p className="mt-2 text-sm leading-5 text-ink-600 dark:text-ink-300">No target entered. Add one to review it against the CGP grade scale.</p>
+                <p className="mt-2 text-sm leading-5 text-ink-600 dark:text-ink-300">Enter a valid target to review it against the CGP grade scale.</p>
               ) : honoursBracket ? (
                 <div className="mt-3 flex items-center gap-3">
                   <AnimatedProgressRing

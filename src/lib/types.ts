@@ -61,8 +61,6 @@ export interface AppData {
   settings: AppSettings;
 }
 
-export const TARGET_CGPA = 5.0;
-
 export const GRADE_SCALE: { gp: number; label: string; minPercent: number }[] = [
   { gp: 5.0, label: 'A', minPercent: 80 },
   { gp: 4.5, label: 'B+', minPercent: 75 },
@@ -73,6 +71,21 @@ export const GRADE_SCALE: { gp: number; label: string; minPercent: number }[] = 
   { gp: 2.0, label: 'D', minPercent: 50 },
   { gp: 0.0, label: 'F', minPercent: 0 },
 ];
+
+export const MAX_GRADE_POINT = Math.max(...GRADE_SCALE.map((grade) => grade.gp));
+export const TARGET_CGPA = MAX_GRADE_POINT;
+
+export function minPercentForGradePoint(gp: number): number {
+  const normalized = Number.isFinite(gp) ? Math.max(0, Math.min(MAX_GRADE_POINT, gp)) : MAX_GRADE_POINT;
+  return GRADE_SCALE.slice().reverse().find((grade) => grade.gp >= normalized)?.minPercent
+    ?? GRADE_SCALE[0].minPercent;
+}
+
+export function gradeLabelForGradePoint(gp: number): string {
+  const normalized = Number.isFinite(gp) ? Math.max(0, Math.min(MAX_GRADE_POINT, gp)) : MAX_GRADE_POINT;
+  return GRADE_SCALE.slice().reverse().find((grade) => grade.gp >= normalized)?.label
+    ?? GRADE_SCALE[0].label;
+}
 
 export function getGradePoint(percentage: number): number {
   for (const g of GRADE_SCALE) {

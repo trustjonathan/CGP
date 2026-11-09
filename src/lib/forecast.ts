@@ -1,5 +1,12 @@
 import type { CourseUnit, Assessment } from './types';
-import { TARGET_CGPA, getGradePoint, getGradeLabel, courseAggregatePercent, cgpa } from './types';
+import {
+  TARGET_CGPA,
+  getGradePoint,
+  getGradeLabel,
+  courseAggregatePercent,
+  cgpa,
+  minPercentForGradePoint,
+} from './types';
 
 export interface RequiredMarkResult {
   hasRemaining: boolean;
@@ -8,11 +15,14 @@ export interface RequiredMarkResult {
   achievable: boolean;
   currentPercent: number | null;
   remainingWeight: number;
+  status: 'already secured' | 'on track' | 'not reachable';
+  bestReachablePercent: number;
+  bestReachableGrade: string;
+  targetPercent: number;
 }
 
-export function calculateRequiredMark(course: CourseUnit): RequiredMarkResult {
+export function calculateRequiredMark(course: CourseUnit, targetPercent = minPercentForGradePoint(course.targetGradePoint)): RequiredMarkResult {
   const currentPct = courseAggregatePercent(course);
-  const targetPct = 80;
 
   let earnedWeight = 0;
   let earnedScore = 0;
@@ -31,26 +41,39 @@ export function calculateRequiredMark(course: CourseUnit): RequiredMarkResult {
     }
   }
 
+  const totalWeight = earnedWeight + remainingWeight;
+  const bestReachablePercent = totalWeight > 0
+    ? ((earnedScore + remainingWeight) / totalWeight) * 100
+    : 0;
+  const bestReachableGrade = getGradeLabel(bestReachablePercent);
+
   if (remainingAssessments.length === 0 || remainingWeight === 0) {
+    const secured = currentPct !== null && currentPct >= targetPercent;
     return {
       hasRemaining: false,
       requiredPercent: null,
       requiredScore: null,
-      achievable: currentPct !== null && currentPct >= targetPct,
+      achievable: secured,
       currentPercent: currentPct,
       remainingWeight: 0,
+      status: secured ? 'already secured' : 'not reachable',
+      bestReachablePercent,
+      bestReachableGrade,
+      targetPercent,
     };
   }
 
-  const totalWeight = earnedWeight + remainingWeight;
-  const neededWeightedScore = targetPct * totalWeight / 100;
+  const neededWeightedScore = targetPercent * totalWeight / 100;
   const remainingNeeded = neededWeightedScore - earnedScore;
   const requiredPercent = (remainingNeeded / remainingWeight) * 100;
 
-  const achievable = requiredPercent <= 100 && requiredPercent >= 0;
+  const achievable = requiredPercent <= 100;
+  const status = requiredPercent <= 0
+    ? 'already secured'
+    : achievable ? 'on track' : 'not reachable';
 
   const avgTotal = remainingAssessments.reduce((s, a) => s + a.total, 0) / remainingAssessments.length;
-  const requiredScore = Math.ceil((requiredPercent / 100) * avgTotal);
+  const requiredScore = Math.max(0, Math.ceil((requiredPercent / 100) * avgTotal));
 
   return {
     hasRemaining: true,
@@ -59,6 +82,10 @@ export function calculateRequiredMark(course: CourseUnit): RequiredMarkResult {
     achievable,
     currentPercent: currentPct,
     remainingWeight,
+    status,
+    bestReachablePercent,
+    bestReachableGrade,
+    targetPercent,
   };
 }
 
@@ -78,7 +105,8 @@ export interface WhatIfResult {
 
 export function runWhatIf(
   courses: CourseUnit[],
-  projectedScores: Record<string, number>
+  projectedScores: Record<string, number>,
+  defaultScores: Record<string, number> = {},
 ): WhatIfResult {
   const courseProjections = courses.map((c) => {
     let earnedWeight = 0;
@@ -96,7 +124,9 @@ export function runWhatIf(
       }
     }
 
-    const projectedPct = projectedScores[c.id] ?? 80;
+    const projectedPct = projectedScores[c.id]
+      ?? defaultScores[c.id]
+      ?? minPercentForGradePoint(c.targetGradePoint);
     const totalWeight = earnedWeight + remainingWeight;
     const projectedWeighted =
       earnedScore + (remainingWeight > 0 ? (projectedPct / 100) * remainingWeight : 0);

@@ -21,6 +21,7 @@ import { WifiOff } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PublicImportPage } from '@/pages/PublicImportPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
+import { SettingsPage } from '@/pages/SettingsPage';
 
 function App() {
   return (
@@ -151,6 +152,7 @@ function CloudWorkspace() {
           <Route path="/import/:token" element={<ImportSetupPage />} />
           <Route path="/import" element={<ImportSetupPage />} />
           <Route path="/settings/sync" element={<SyncSettingsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/help" element={<HelpPage />} />
         </Routes>

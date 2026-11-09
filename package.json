@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "vitest run src/lib/gradingConfig.test.ts && node --test src/lib/sharedSetup.test.mjs src/lib/vaultBackup.test.mjs src/lib/onboardingStats/index.test.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "docker:build": "docker build --tag cgpa-tracker .",
@@ -78,6 +79,7 @@
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
     "vite": "^5.4.2",
+    "vitest": "^2.1.9",
     "wait-on": "^9.1.0"
   }
 }

@@ -1,4 +1,5 @@
 import type { AppData } from './types';
+import type { TargetChoice } from './gradingConfig';
 
 export interface OnboardingCourseDraft {
   id: string;
@@ -17,6 +18,8 @@ export interface OnboardingDraft {
   academicYear: string;
   courses: OnboardingCourseDraft[];
   targetCGPA: number | null;
+  targetChoice?: TargetChoice;
+  customTargetPercent?: number | null;
   scores: Record<string, number | null>;
   completed: boolean;
 }
@@ -61,6 +64,8 @@ export function createOnboardingDraft(now = Date.now()): OnboardingDraft {
     academicYear: getDefaultAcademicYear(new Date(now)),
     courses: [],
     targetCGPA: null,
+    targetChoice: 'A',
+    customTargetPercent: null,
     scores: {},
     completed: false,
   };

@@ -31,6 +31,7 @@ import {
   totalCompletedCredits,
   totalCredits,
   TARGET_CGPA,
+  MAX_GRADE_POINT,
   getGradeLabel,
   getGradeColor,
   type CourseUnit,
@@ -40,11 +41,12 @@ import { ProgressRing, StatCard, GradeBadge, ProgressBar, EmptyState } from '@/c
 import { useAuth } from '@/contexts/useAuth';
 import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
 import { getSetupCompleteness, shouldShowSetupReminder, type OnboardingLocalState, type SetupReminderState } from '@/lib/onboarding';
+import { legacyTargetPromptWasDismissed, targetSummary } from '@/lib/gradingConfig';
 
 const emptyReminder: SetupReminderState = { lastShownAt: null, snoozedUntil: null, dismissals: 0, notificationsEnabled: false };
 
 export function DashboardPage() {
-  const { data, loadSampleData } = useAppData();
+  const { data, loadSampleData, updateSettings } = useAppData();
   const { user } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [reminder, setReminder] = useState<SetupReminderState>(emptyReminder);
@@ -112,6 +114,10 @@ export function DashboardPage() {
   const currentCGPA = cgpa(data.courses);
   const targetIsSet = data.settings.targetSet !== false;
   const targetCGPA = targetIsSet ? data.settings.targetCGPA : TARGET_CGPA;
+  const showLegacyTargetPrompt = data.courses.length > 0
+    && !legacyTargetPromptWasDismissed(data.settings)
+    && data.settings.targetCGPA === MAX_GRADE_POINT
+    && data.courses.every((course) => course.targetGradePoint === MAX_GRADE_POINT);
   const completedCU = totalCompletedCredits(data.courses);
   const totalCU = totalCredits(data.courses);
   const gap = getGapToTarget(currentCGPA, targetCGPA);
@@ -186,6 +192,25 @@ export function DashboardPage() {
         </div>
       )}
 
+      {showLegacyTargetPrompt && (
+        <section className="card flex flex-col gap-3 border-primary-200 bg-primary-50/60 p-4 sm:flex-row sm:items-center sm:justify-between" aria-labelledby="legacy-target-title">
+          <div>
+            <h2 id="legacy-target-title" className="font-display font-semibold text-ink-900">Your goal is A for all courses. Keep it or change it?</h2>
+            <p className="mt-1 text-sm text-ink-600">Your saved targets have not been changed.</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button type="button" className="btn-secondary" onClick={() => updateSettings({ legacyTargetPromptDismissed: true })}>Keep A</button>
+            <Link
+              to="/settings"
+              className="btn-primary"
+              onClick={() => updateSettings({ legacyTargetPromptDismissed: true })}
+            >
+              Change target
+            </Link>
+          </div>
+        </section>
+      )}
+
       {showSetupReminder && completeness.nextStep && (
         <section className="card flex flex-col gap-4 border-primary-200 bg-primary-50/60 p-4 sm:flex-row sm:items-center sm:p-5" aria-labelledby="setup-reminder-title">
           <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -232,10 +257,10 @@ export function DashboardPage() {
               </div>
               <ProgressRing
                 value={currentCGPA}
-                max={5}
+                max={MAX_GRADE_POINT}
                 size={160}
                 stroke={12}
-                label="out of 5.0"
+                label={`out of ${MAX_GRADE_POINT.toFixed(1)}`}
                 color={ringColor}
               />
               <div className="mt-4 flex items-center gap-2">
@@ -269,7 +294,7 @@ export function DashboardPage() {
                 value={targetIsSet ? targetCGPA.toFixed(2) : '--'}
                 icon={Target}
                 color="accent"
-                hint={targetIsSet ? 'Your goal' : 'Set a goal when ready'}
+                hint={targetIsSet ? targetSummary(data.settings) : 'Set a goal when ready'}
               />
               <StatCard
                 label="Completed Credits"
@@ -312,7 +337,7 @@ export function DashboardPage() {
                   <LineChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#64748b' }} />
-                    <YAxis domain={[0, 5]} tick={{ fontSize: 12, fill: '#64748b' }} />
+                    <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 12, fill: '#64748b' }} />
                     <Tooltip
                       contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
                       formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'GPA']}

@@ -20,11 +20,17 @@ import {
   courseAggregatePercent,
   courseCurrentGP,
   getGradeLabel,
+  getGradePoint,
   getGradeColor,
+  GRADE_SCALE,
+  gradeLabelForGradePoint,
+  MAX_GRADE_POINT,
+  minPercentForGradePoint,
   type Assessment,
   type CourseDocument,
 } from '@/lib/types';
 import { calculateRequiredMark } from '@/lib/forecast';
+import { COURSEWORK_EXAM_REQUIREMENT, gradePointForTargetChoice, targetPercentForCourse } from '@/lib/gradingConfig';
 import { Modal } from '@/components/ui/Modal';
 import { ProgressBar, GradeBadge, EmptyState } from '@/components/ui';
 
@@ -58,6 +64,7 @@ export function CourseDetailPage() {
   const [cName, setCName] = useState('');
   const [cCode, setCCode] = useState('');
   const [cCU, setCCU] = useState(3);
+  const [cTargetGP, setCTargetGP] = useState(MAX_GRADE_POINT);
   const [isDragging, setIsDragging] = useState(false);
   const [topicInput, setTopicInput] = useState('');
 
@@ -82,7 +89,12 @@ export function CourseDetailPage() {
 
   const currentPct = courseAggregatePercent(course);
   const currentGP = courseCurrentGP(course);
-  const required = calculateRequiredMark(course);
+  const targetPercent = targetPercentForCourse(course, data.settings);
+  const targetLabel = targetPercent === minPercentForGradePoint(course.targetGradePoint)
+    ? `${gradeLabelForGradePoint(course.targetGradePoint)} (${course.targetGradePoint.toFixed(1)} GP)`
+    : `Custom ${targetPercent}%`;
+  const required = calculateRequiredMark(course, targetPercent);
+  const isPassTarget = course.targetGradePoint === gradePointForTargetChoice('pass');
 
   const openAddAssess = () => {
     setEditAssess(null);
@@ -114,12 +126,18 @@ export function CourseDetailPage() {
     setCName(course.name);
     setCCode(course.code);
     setCCU(course.creditUnits);
+    setCTargetGP(course.targetGradePoint);
     setEditCourseOpen(true);
   };
 
   const handleSaveCourse = () => {
     if (!cName.trim()) return;
-    updateCourse(course.id, { name: cName.trim(), code: cCode.trim(), creditUnits: cCU });
+    updateCourse(course.id, {
+      name: cName.trim(),
+      code: cCode.trim(),
+      creditUnits: cCU,
+      targetGradePoint: cTargetGP,
+    });
     setEditCourseOpen(false);
   };
 
@@ -243,14 +261,14 @@ export function CourseDetailPage() {
           </div>
           <div>
             <div className="text-xs text-ink-500 mb-1">Target</div>
-            <div className="font-display font-bold text-lg text-ink-900">{course.targetGradePoint.toFixed(1)}</div>
-            <span className="text-xs text-ink-400">Grade Point goal</span>
+            <div className="font-display font-bold text-lg text-ink-900">{targetLabel}</div>
+            <span className="text-xs text-ink-400">Course target</span>
           </div>
         </div>
       </div>
 
       {/* Required Mark Calculator */}
-      {required.hasRemaining && (
+      {(required.hasRemaining || isPassTarget || course.assessments.length > 0) && (
         <div className="card p-5">
           <div className="flex items-center gap-2 mb-4">
             <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${required.achievable ? 'bg-success-50 text-success-600' : 'bg-warning-50 text-warning-600'}`}>
@@ -258,7 +276,7 @@ export function CourseDetailPage() {
             </div>
             <div>
               <h3 className="font-display font-semibold text-ink-900">Target Safety Forecast</h3>
-              <p className="text-xs text-ink-500">Minimum score needed to reach 80% (Grade A / 5.0 GP)</p>
+              <p className="text-xs text-ink-500">Minimum score needed to reach {targetLabel}</p>
             </div>
           </div>
 
@@ -266,7 +284,7 @@ export function CourseDetailPage() {
             <div className="rounded-lg bg-ink-50 p-4 text-center">
               <div className="text-xs text-ink-500 mb-1">Required Average</div>
               <div className="font-display font-bold text-2xl text-ink-900">
-                {required.requiredPercent?.toFixed(1)}%
+                {required.requiredPercent?.toFixed(1) ?? '--'}%
               </div>
               <div className="text-xs text-ink-400 mt-1">across remaining assessments</div>
             </div>
@@ -286,23 +304,38 @@ export function CourseDetailPage() {
             </div>
           </div>
 
-          {!required.achievable && required.requiredPercent !== null && (
+          {isPassTarget && (
+            <div className="mt-4 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900">
+              <strong>Safe zone:</strong>{' '}
+              {required.hasRemaining && required.requiredPercent !== null
+                ? `you need at least ${required.requiredPercent.toFixed(1)}% on remaining work to reach a total of ${minPercentForGradePoint(gradePointForTargetChoice('pass') ?? 0)}%. `
+                : required.status === 'already secured'
+                  ? 'the pass target is already secured. '
+                  : course.assessments.length > 0
+                    ? 'there is no remaining assessment weight to raise the total to the pass mark. '
+                    : 'add assessment weights to calculate the minimum mark needed to reach the pass total. '}
+              Coursework must be at least {COURSEWORK_EXAM_REQUIREMENT.minimum}/{COURSEWORK_EXAM_REQUIREMENT.total} to sit the exam.
+            </div>
+          )}
+          {course.assessments.length > 0 && required.status === 'not reachable' && (
             <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-warning-50 text-warning-800 text-sm">
               <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span>
-                You need an average of <strong>{required.requiredPercent.toFixed(1)}%</strong> in remaining
-                assessments. This is above 100% — the A grade target is no longer reachable. Consider
-                adjusting your target or focusing on the best achievable grade.
+                This target is not reachable with the remaining assessment weight. Best reachable:
+                <strong> {required.bestReachableGrade} ({required.bestReachablePercent.toFixed(1)}%)</strong>.
               </span>
             </div>
           )}
-          {required.achievable && (
+          {course.assessments.length > 0 && required.status === 'already secured' && (
             <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-success-50 text-success-800 text-sm">
               <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>
-                You can still reach Grade A (5.0 GP)! Score at least{' '}
-                <strong>{required.requiredPercent?.toFixed(1)}%</strong> on average in your remaining assessments.
-              </span>
+              <span>Your {targetLabel} target is already secured.</span>
+            </div>
+          )}
+          {course.assessments.length > 0 && required.status === 'on track' && (
+            <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-success-50 text-success-800 text-sm">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>On track for {targetLabel}. Average at least <strong>{required.requiredPercent?.toFixed(1)}%</strong> on remaining assessments.</span>
             </div>
           )}
         </div>
@@ -375,7 +408,11 @@ export function CourseDetailPage() {
                   <div className="sm:col-span-2 text-sm sm:text-center">
                     {weightedPct !== null ? (
                       <div className="flex flex-col">
-                        <span className={`font-semibold ${weightedPct >= 80 ? 'text-success-600' : weightedPct >= 50 ? 'text-warning-600' : 'text-error-600'}`}>
+                        <span className={`font-semibold ${
+                          getGradeColor(getGradePoint(weightedPct)) === 'success' ? 'text-success-600'
+                            : getGradeColor(getGradePoint(weightedPct)) === 'warning' ? 'text-warning-600'
+                              : getGradeColor(getGradePoint(weightedPct)) === 'primary' ? 'text-primary-600' : 'text-error-600'
+                        }`}>
                           {weightedPct.toFixed(1)}%
                         </span>
                         <span className="text-xs text-ink-400">{weightedScore?.toFixed(1)} pts</span>
@@ -537,6 +574,14 @@ export function CourseDetailPage() {
           <div>
             <label className="label">Credit Units</label>
             <input type="number" value={cCU} onChange={(e) => setCCU(parseInt(e.target.value) || 1)} min="1" max="6" className="input" />
+          </div>
+          <div>
+            <label className="label">Target grade</label>
+            <select value={cTargetGP} onChange={(event) => setCTargetGP(Number(event.target.value))} className="input">
+              {GRADE_SCALE.filter((grade) => grade.label !== 'F').map((grade) => (
+                <option key={grade.label} value={grade.gp}>{grade.label} · {grade.gp.toFixed(1)} GP ({grade.minPercent}%)</option>
+              ))}
+            </select>
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <button onClick={() => setEditCourseOpen(false)} className="btn-secondary">Cancel</button>
