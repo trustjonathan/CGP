@@ -36,7 +36,8 @@ import {
   getGradeColor,
   type CourseUnit,
 } from '@/lib/types';
-import { getGapToTarget } from '@/lib/forecast';
+import { calculateCourseForecast, formatPoints, getGapToTarget } from '@/lib/forecast';
+import { targetPercentForCourse } from '@/lib/gradingConfig';
 import { ProgressRing, StatCard, GradeBadge, ProgressBar, EmptyState } from '@/components/ui';
 import { useAuth } from '@/contexts/useAuth';
 import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
@@ -121,6 +122,12 @@ export function DashboardPage() {
   const completedCU = totalCompletedCredits(data.courses);
   const totalCU = totalCredits(data.courses);
   const gap = getGapToTarget(currentCGPA, targetCGPA);
+  const courseForecasts = data.courses
+    .map((course) => ({
+      course,
+      forecast: calculateCourseForecast(course, targetPercentForCourse(course, data.settings)),
+    }))
+    .filter(({ forecast }) => forecast.hasRemaining);
 
   const semestersWithGPA = data.semesters
     .map((s) => ({
@@ -319,6 +326,39 @@ export function DashboardPage() {
               />
             </div>
           </div>
+
+          {courseForecasts.length > 0 && (
+            <section className="card p-5" aria-labelledby="course-forecasts-heading">
+              <h2 id="course-forecasts-heading" className="font-display font-semibold text-ink-900">
+                Course target forecasts
+              </h2>
+              <ul className="mt-3 divide-y divide-ink-100">
+                {courseForecasts.map(({ course, forecast }) => (
+                  <li key={course.id} className="py-3 first:pt-0 last:pb-0">
+                    <Link to={`/course/${course.id}`} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-ink-900">{course.name}</span>
+                        <span className="block text-xs text-ink-500">{course.code} · Target {forecast.targetPercent}%</span>
+                      </span>
+                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                        <span className="font-semibold tabular-nums text-ink-900">
+                          {formatPoints(forecast.requiredPoints)} of {formatPoints(forecast.remainingWeight)} points needed
+                        </span>
+                        <span className="tabular-nums text-ink-600">
+                          {forecast.requiredPercent?.toFixed(1) ?? '--'}% on remaining work
+                        </span>
+                        <span className={`text-xs font-medium ${forecast.status === 'not reachable' ? 'text-warning-700' : forecast.status === 'already secured' ? 'text-success-700' : 'text-primary-700'}`}>
+                          {forecast.status === 'not reachable'
+                            ? `Not reachable · best ${forecast.bestReachableGrade} (${forecast.bestReachablePercent.toFixed(1)}%)`
+                            : forecast.status === 'already secured' ? 'Already secured' : 'On track'}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

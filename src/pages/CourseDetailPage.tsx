@@ -29,7 +29,7 @@ import {
   type Assessment,
   type CourseDocument,
 } from '@/lib/types';
-import { calculateRequiredMark } from '@/lib/forecast';
+import { calculateCourseForecast, formatPoints } from '@/lib/forecast';
 import { COURSEWORK_EXAM_REQUIREMENT, gradePointForTargetChoice, targetPercentForCourse } from '@/lib/gradingConfig';
 import { Modal } from '@/components/ui/Modal';
 import { ProgressBar, GradeBadge, EmptyState } from '@/components/ui';
@@ -93,7 +93,7 @@ export function CourseDetailPage() {
   const targetLabel = targetPercent === minPercentForGradePoint(course.targetGradePoint)
     ? `${gradeLabelForGradePoint(course.targetGradePoint)} (${course.targetGradePoint.toFixed(1)} GP)`
     : `Custom ${targetPercent}%`;
-  const required = calculateRequiredMark(course, targetPercent);
+  const required = calculateCourseForecast(course, targetPercent);
   const isPassTarget = course.targetGradePoint === gradePointForTargetChoice('pass');
 
   const openAddAssess = () => {
@@ -286,23 +286,44 @@ export function CourseDetailPage() {
               <div className="font-display font-bold text-2xl text-ink-900">
                 {required.requiredPercent?.toFixed(1) ?? '--'}%
               </div>
-              <div className="text-xs text-ink-400 mt-1">across remaining assessments</div>
+              <div className="text-xs text-ink-400 mt-1">on remaining work</div>
             </div>
             <div className="rounded-lg bg-ink-50 p-4 text-center">
-              <div className="text-xs text-ink-500 mb-1">Approx. Score Needed</div>
+              <div className="text-xs text-ink-500 mb-1">Points Needed</div>
               <div className="font-display font-bold text-2xl text-ink-900">
-                {required.requiredScore !== null ? `${required.requiredScore}/100` : '--'}
+                {required.hasRemaining
+                  ? `${formatPoints(required.requiredPoints)} of ${formatPoints(required.remainingWeight)} points needed`
+                  : '--'}
               </div>
-              <div className="text-xs text-ink-400 mt-1">per remaining assessment</div>
+              <div className="text-xs text-ink-400 mt-1">of remaining course weight</div>
             </div>
             <div className="rounded-lg bg-ink-50 p-4 text-center">
               <div className="text-xs text-ink-500 mb-1">Remaining Weight</div>
               <div className="font-display font-bold text-2xl text-ink-900">
-                {required.remainingWeight}%
+                {formatPoints(required.remainingWeight)}%
               </div>
               <div className="text-xs text-ink-400 mt-1">of total grade</div>
             </div>
           </div>
+
+          {required.assessmentRequirements.length > 0 && (
+            <div className="mt-4 rounded-lg border border-ink-100 p-3">
+              <h4 className="text-xs font-semibold text-ink-700">Required score by remaining assessment</h4>
+              <ul className="mt-2 space-y-2">
+                {required.assessmentRequirements.map((assessment) => (
+                  <li key={assessment.assessmentId} className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
+                    <span className="min-w-0 flex-1 text-ink-700">{assessment.name}</span>
+                    <span className="font-semibold tabular-nums text-ink-900">
+                      {formatPoints(assessment.requiredPoints)} of {formatPoints(assessment.total)}
+                    </span>
+                    <span className="text-xs tabular-nums text-ink-500">
+                      {assessment.requiredPercent?.toFixed(1) ?? '--'}%
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {isPassTarget && (
             <div className="mt-4 rounded-lg border border-primary-200 bg-primary-50 p-3 text-sm text-primary-900">

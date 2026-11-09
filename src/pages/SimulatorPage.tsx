@@ -32,7 +32,7 @@ import {
   MAX_GRADE_POINT,
   formatGPA,
 } from '@/lib/types';
-import { runWhatIf } from '@/lib/forecast';
+import { formatPoints, runWhatIf } from '@/lib/forecast';
 import { targetPercentForCourse, targetPercentForSettings, targetSummary } from '@/lib/gradingConfig';
 import { ProgressBar, EmptyState } from '@/components/ui';
 
@@ -44,9 +44,10 @@ export function SimulatorPage() {
   const [projectedScores, setProjectedScores] = useState<Record<string, number>>({});
   const [globalScore, setGlobalScore] = useState<number | null>(null);
   const effectiveGlobalScore = globalScore ?? targetPercent;
-  const defaultScores = useMemo(() => Object.fromEntries(
+  const courseTargetPercents = useMemo(() => Object.fromEntries(
     data.courses.map((course) => [course.id, targetPercentForCourse(course, data.settings)]),
   ), [data.courses, data.settings]);
+  const defaultScores = courseTargetPercents;
 
   const currentCGPA = cgpa(data.courses);
 
@@ -58,8 +59,8 @@ export function SimulatorPage() {
   }, [data.courses]);
 
   const result = useMemo(
-    () => runWhatIf(data.courses, projectedScores, defaultScores),
-    [data.courses, defaultScores, projectedScores]
+    () => runWhatIf(data.courses, projectedScores, defaultScores, courseTargetPercents),
+    [data.courses, courseTargetPercents, defaultScores, projectedScores]
   );
 
   const scenarioData = useMemo(() => [...new Set([0, 20, 40, 60, 70, targetPercent, 90, 100])]
@@ -69,8 +70,8 @@ export function SimulatorPage() {
       data.courses
         .filter((course) => courseAggregatePercent(course) === null)
         .map((course) => [course.id, score])
-    ), defaultScores).projectedCGPA,
-  })), [data.courses, defaultScores, targetPercent]);
+    ), defaultScores, courseTargetPercents).projectedCGPA,
+  })), [data.courses, courseTargetPercents, defaultScores, targetPercent]);
 
   const setScore = useCallback((courseId: string, score: number) => {
     setProjectedScores((prev) => ({ ...prev, [courseId]: score }));
@@ -394,19 +395,40 @@ export function SimulatorPage() {
                   )}
                 </div>
                 {isUngraded && (
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={score}
-                      onChange={(e) => setScore(course.id, parseInt(e.target.value))}
-                      className="flex-1 accent-primary-600"
-                    />
-                    <span className="font-mono font-semibold text-sm text-ink-700 w-12 text-right">
-                      {score}%
-                    </span>
-                  </div>
+                  <>
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={score}
+                        onChange={(e) => setScore(course.id, parseInt(e.target.value))}
+                        className="flex-1 accent-primary-600"
+                      />
+                      <span className="font-mono font-semibold text-sm text-ink-700 w-12 text-right">
+                        {score}%
+                      </span>
+                    </div>
+                    {projection?.forecast.hasRemaining && (
+                      <div className="mt-3 space-y-2 text-xs">
+                        <p className="text-ink-600">
+                          Target {projection.forecast.targetPercent}%: {formatPoints(projection.forecast.requiredPoints)} of {formatPoints(projection.forecast.remainingWeight)} points needed; {projection.forecast.requiredPercent?.toFixed(1) ?? '--'}% on remaining work.
+                          {' '}{projection.forecast.status === 'not reachable'
+                            ? `Not reachable; best is ${projection.forecast.bestReachableGrade} (${projection.forecast.bestReachablePercent.toFixed(1)}%).`
+                            : projection.forecast.status === 'already secured' ? 'Already secured.' : 'On track.'}
+                        </p>
+                        {projection.forecast.assessmentRequirements.length > 1 && (
+                          <ul className="space-y-1 text-ink-500">
+                            {projection.forecast.assessmentRequirements.map((assessment) => (
+                              <li key={assessment.assessmentId}>
+                                {assessment.name}: {assessment.requiredPercent?.toFixed(1) ?? '--'}% ({formatPoints(assessment.requiredPoints)} of {formatPoints(assessment.total)})
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
