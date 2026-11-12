@@ -308,7 +308,7 @@ export function HelpAssistant() {
       <button
         ref={triggerRef}
         type="button"
-        className={`fixed z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary-700 text-white shadow-lg transition hover:bg-primary-800 focus:outline-none focus:ring-4 focus:ring-primary-300 print:hidden ${draggingWidget ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`fixed z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary-700 text-white shadow-lg transition-colors hover:bg-primary-800 focus:outline-none focus:ring-4 focus:ring-primary-300 print:hidden ${draggingWidget ? 'cursor-grabbing' : 'cursor-grab'}`}
         style={widgetPosition
           ? { left: `${widgetPosition.left}px`, top: `${widgetPosition.top}px`, touchAction: 'none' }
           : { right: '1rem', bottom: 'calc(1.25rem + env(safe-area-inset-bottom))', touchAction: 'none' }}
