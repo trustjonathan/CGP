@@ -229,6 +229,89 @@ describe('sync contract', () => {
     expect(settingsPayload).toEqual({ targetCGPA: 4 });
   });
 
+  it('rejects local-only settings and UI state at the Supabase RPC boundary', () => {
+    const localOnlyFields = [
+      'onboardingDraft',
+      'currentStep',
+      'notificationPreferences',
+      'notificationsEnabled',
+      'reminder',
+      'calendarReminderState',
+      'vault',
+      'activeTab',
+      'theme',
+    ];
+
+    for (const field of localOnlyFields) {
+      const payload = { targetCGPA: 4, [field]: { local: true } } as AppData['settings'];
+      expect(() => saveRecordRpcArguments(cloudRecord(payload, 1), 1))
+        .toThrow(new RegExp(`unsupported field.*${field}.*cannot be sent to Supabase`));
+    }
+  });
+
+  it('rejects course documents and nested local-only fields at the Supabase RPC boundary', () => {
+    const courseWithDocument = course({
+      documents: [{
+        id: 'doc-1',
+        fileName: 'notes.pdf',
+        fileType: 'application/pdf',
+        fileSize: 10,
+        uploadDate: 3,
+        fileUrl: 'blob:private-document',
+      }],
+    });
+    expect(() => saveRecordRpcArguments(cloudRecord(courseWithDocument, 1), 1))
+      .toThrow('Course documents are device-local and cannot be sent to Supabase.');
+
+    const courseWithLocalAssessmentState = course({
+      assessments: [{
+        id: 'assessment-1',
+        name: 'Coursework',
+        weight: 40,
+        obtained: 39,
+        total: 40,
+        localNote: 'device-only',
+      } as CourseUnit['assessments'][number]],
+    });
+    expect(() => saveRecordRpcArguments(cloudRecord(courseWithLocalAssessmentState, 1), 1))
+      .toThrow(/unsupported field.*localNote.*cannot be sent to Supabase/);
+  });
+
+  it('projects local-only fields only when replaying local account records', async () => {
+    const localCourse = {
+      ...course({
+        documents: [{
+          id: 'doc-1',
+          fileName: 'notes.pdf',
+          fileType: 'application/pdf',
+          fileSize: 10,
+          uploadDate: 3,
+          fileUrl: 'blob:private-document',
+        }],
+      }),
+      localReminderState: { dismissed: true },
+    } as CourseUnit;
+    const localSettings = {
+      targetCGPA: 4,
+      onboardingDraft: { currentStep: 2 },
+      notificationPreferences: { enabled: true },
+    } as AppData['settings'];
+    const pending = [accountRecord(localCourse), accountRecord(localSettings)];
+    const save = vi.fn().mockResolvedValue({ status: 'saved', revision: 1 });
+    const acknowledge = vi.fn().mockResolvedValue(undefined);
+
+    await replayPendingRecords(pending, new Map(), save, acknowledge);
+
+    expect(save).toHaveBeenCalledTimes(2);
+    const savedCourse = save.mock.calls.find(([record]) => record.record_type === 'course')?.[0];
+    const savedSettings = save.mock.calls.find(([record]) => record.record_type === 'settings')?.[0];
+    expect(savedCourse?.payload).toMatchObject({ documents: [] });
+    expect(savedCourse?.payload).not.toHaveProperty('localReminderState');
+    expect(savedSettings?.payload).toEqual({ targetCGPA: 4 });
+    expect(JSON.stringify(pending)).toContain('blob:private-document');
+    expect(JSON.stringify(pending)).toContain('onboardingDraft');
+  });
+
   it('locks record identity and outbound course payload keys', () => {
     const courseWithDeviceState = {
       ...course(),

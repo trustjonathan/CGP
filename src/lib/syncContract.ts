@@ -52,9 +52,39 @@ const SETTINGS_FIELDS = [
   'onboardingCompleted',
   'profilePicture',
 ] as const;
+const SEMESTER_FIELDS = ['id', 'academicYear', 'semesterNumber', 'createdAt'] as const;
+const COURSE_FIELDS = [
+  'id',
+  'name',
+  'code',
+  'creditUnits',
+  'targetGradePoint',
+  'targetUsesGlobal',
+  'semesterId',
+  'assessments',
+  'topics',
+  'documents',
+  'completed',
+  'createdAt',
+] as const;
+const ASSESSMENT_FIELDS = ['id', 'name', 'weight', 'obtained', 'total'] as const;
+const TOPIC_FIELDS = ['id', 'title', 'completed'] as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function assertOnlyFields(value: Record<string, unknown>, fields: readonly string[], label: string) {
+  const unexpected = Object.keys(value).filter((field) => !fields.includes(field));
+  if (unexpected.length) {
+    throw new Error(
+      `The ${label} payload contains unsupported field(s): ${unexpected.join(', ')}. Local-only or unknown data cannot be sent to Supabase.`,
+    );
+  }
+}
+
+function hasOnlyFields(value: object, fields: readonly string[]) {
+  return Object.keys(value).every((field) => fields.includes(field));
 }
 
 function pickFields<T extends readonly string[]>(value: Record<string, unknown>, fields: T) {
@@ -63,7 +93,7 @@ function pickFields<T extends readonly string[]>(value: Record<string, unknown>,
     .map((field) => [field, value[field]]));
 }
 
-function serializePayload(recordType: RecordType, payload: unknown) {
+function projectLocalPayload(recordType: RecordType, payload: unknown) {
   if (!isObject(payload)) throw new Error(`The ${recordType} record payload must be an object.`);
   if (recordType === 'semester') {
     return {
@@ -118,6 +148,43 @@ function serializePayload(recordType: RecordType, payload: unknown) {
   } satisfies CourseUnit;
 }
 
+function serializeCloudPayload(recordType: RecordType, payload: unknown) {
+  if (!isObject(payload)) throw new Error(`The ${recordType} record payload must be an object.`);
+  const fields = recordType === 'semester'
+    ? SEMESTER_FIELDS
+    : recordType === 'course'
+      ? COURSE_FIELDS
+      : SETTINGS_FIELDS;
+  assertOnlyFields(payload, fields, recordType);
+
+  if (recordType === 'course') {
+    if (payload.documents !== undefined && !Array.isArray(payload.documents)) {
+      throw new Error('The course document payload must be a list.');
+    }
+    if (Array.isArray(payload.documents) && payload.documents.length > 0) {
+      throw new Error('Course documents are device-local and cannot be sent to Supabase.');
+    }
+    for (const [field, allowedFields] of [
+      ['assessments', ASSESSMENT_FIELDS],
+      ['topics', TOPIC_FIELDS],
+    ] as const) {
+      const entries = payload[field];
+      if (entries !== undefined && !Array.isArray(entries)) {
+        throw new Error(`The course ${field} payload must be a list.`);
+      }
+      if (Array.isArray(entries)) {
+        entries.forEach((entry, index) => {
+          if (isObject(entry)) {
+            assertOnlyFields(entry, allowedFields, `course ${field}[${index}]`);
+          }
+        });
+      }
+    }
+  }
+
+  return projectLocalPayload(recordType, payload);
+}
+
 function isAssessment(value: unknown): value is CourseUnit['assessments'][number] {
   return isObject(value)
     && typeof value.id === 'string'
@@ -139,21 +206,21 @@ export function toCloudRecords(data: AppData): CloudRecord[] {
     ...data.semesters.map((semester) => ({
       id: `semester:${semester.id}`,
       record_type: 'semester' as const,
-      payload: serializePayload('semester', semester),
+      payload: projectLocalPayload('semester', semester),
       is_deleted: false,
       revision: 0,
     })),
     ...data.courses.map((course) => ({
       id: `course:${course.id}`,
       record_type: 'course' as const,
-      payload: serializePayload('course', course),
+      payload: projectLocalPayload('course', course),
       is_deleted: false,
       revision: 0,
     })),
     {
       id: 'settings:current',
       record_type: 'settings' as const,
-      payload: serializePayload('settings', data.settings),
+      payload: projectLocalPayload('settings', data.settings),
       is_deleted: false,
       revision: 0,
     },
@@ -172,16 +239,22 @@ export function isCloudRecord(value: unknown): value is CloudRecord {
 
   const payloadId = value.payload.id;
   if (value.record_type === 'settings') {
-    return value.id === 'settings:current' && typeof value.payload.targetCGPA === 'number';
+    return hasOnlyFields(value.payload, SETTINGS_FIELDS)
+      && value.id === 'settings:current'
+      && typeof value.payload.targetCGPA === 'number';
   }
   if (value.record_type === 'semester') {
-    return typeof payloadId === 'string'
+    return hasOnlyFields(value.payload, SEMESTER_FIELDS)
+      && typeof payloadId === 'string'
       && typeof value.payload.academicYear === 'string'
       && Number.isInteger(value.payload.semesterNumber)
       && typeof value.payload.createdAt === 'number'
       && value.id === `semester:${payloadId}`;
   }
-  return typeof payloadId === 'string'
+  return hasOnlyFields(value.payload, COURSE_FIELDS)
+    && (value.payload.documents === undefined
+      || (Array.isArray(value.payload.documents) && value.payload.documents.length === 0))
+    && typeof payloadId === 'string'
     && typeof value.payload.name === 'string'
     && typeof value.payload.code === 'string'
     && typeof value.payload.creditUnits === 'number'
@@ -189,9 +262,13 @@ export function isCloudRecord(value: unknown): value is CloudRecord {
     && typeof value.payload.semesterId === 'string'
     && typeof value.payload.createdAt === 'number'
     && (value.payload.assessments === undefined
-      || (Array.isArray(value.payload.assessments) && value.payload.assessments.every(isAssessment)))
+      || (Array.isArray(value.payload.assessments)
+        && value.payload.assessments.every((assessment) => (
+          isAssessment(assessment) && hasOnlyFields(assessment, ASSESSMENT_FIELDS)
+        ))))
     && (value.payload.topics === undefined
-      || (Array.isArray(value.payload.topics) && value.payload.topics.every(isTopic)))
+      || (Array.isArray(value.payload.topics)
+        && value.payload.topics.every((topic) => isTopic(topic) && hasOnlyFields(topic, TOPIC_FIELDS))))
     && (value.payload.completed === undefined || typeof value.payload.completed === 'boolean')
     && value.id === `course:${payloadId}`;
 }
@@ -202,7 +279,7 @@ function normalizedCloudRecord(record: CloudRecord): CloudRecord {
   }
   const normalized: CloudRecord = {
     ...record,
-    payload: serializePayload(record.record_type, record.payload),
+    payload: serializeCloudPayload(record.record_type, record.payload),
   };
   const expectedId = normalized.record_type === 'settings'
     ? 'settings:current'
@@ -247,7 +324,7 @@ function accountRecordToCloudRecord(record: AccountSyncRecord): CloudRecord {
   return normalizedCloudRecord({
     id: record.id,
     record_type: record.record_type,
-    payload: record.payload,
+    payload: projectLocalPayload(record.record_type, record.payload),
     is_deleted: record.is_deleted,
     revision: record.revision,
   });

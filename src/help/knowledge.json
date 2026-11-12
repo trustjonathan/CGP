@@ -221,7 +221,7 @@
         {
           "id": "vault-sync",
           "question": "Does Vault sync with my CGP account?",
-          "answer": "Vault entries are separate from academic records and are stored locally on the device, not in the CGP account database. Do not expect vault entries to appear on another device.",
+          "answer": "Vault entries are stored locally on this device and are never read from or written to Supabase. Cloud Vault backup and restore are disabled; any backups saved previously are left untouched and will not be restored by this app.",
           "routes": ["/vault"]
         },
         {
