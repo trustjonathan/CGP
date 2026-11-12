@@ -4,6 +4,7 @@ import { Bell, CheckCircle2, Cloud, RefreshCw, Wifi, WifiOff } from 'lucide-reac
 import { useAppData } from '@/lib/useAppData';
 import { useAuth } from '@/contexts/useAuth';
 import { readOnboardingState, saveOnboardingState } from '@/lib/localSync';
+import { APP_VERSION } from '@/lib/appVersion';
 import type { OnboardingLocalState, SetupReminderState } from '@/lib/onboarding';
 
 const defaultReminder: SetupReminderState = { lastShownAt: null, snoozedUntil: null, dismissals: 0, notificationsEnabled: false };
@@ -23,7 +24,6 @@ export function SyncSettingsPage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [notificationBusy, setNotificationBusy] = useState(false);
-  const version = import.meta.env.VITE_APP_VERSION || '1.0.0';
   const notificationsAvailable = typeof Notification !== 'undefined';
 
   useEffect(() => {
@@ -120,7 +120,7 @@ export function SyncSettingsPage() {
       <section className="card p-5" aria-labelledby="version-title">
         <h2 id="version-title" className="font-display text-lg font-bold text-ink-900">Application version</h2>
         <p className="mt-2 text-sm text-ink-600">
-          CGP Web <span className="font-semibold text-ink-900">{version}</span>
+          CGP Web <span className="font-semibold text-ink-900">{APP_VERSION}</span>
         </p>
       </section>
 

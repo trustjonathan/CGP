@@ -24,7 +24,7 @@ await build({
 const stats = await import(pathToFileURL(output).href);
 const dashboardCalculations = await import(pathToFileURL(typesOutput).href);
 
-function course(id, creditUnits, percentage = null, semesterId = 's1') {
+function course(id, creditUnits, percentage = null, semesterId = 's1', completed) {
   return {
     id,
     name: id,
@@ -41,6 +41,7 @@ function course(id, creditUnits, percentage = null, semesterId = 's1') {
     }],
     topics: [],
     documents: [],
+    ...(completed === undefined ? {} : { completed }),
     createdAt: 0,
   };
 }
@@ -81,6 +82,18 @@ test('semester and cumulative GPA delegate to the configured grade scale', () =>
   const courses = [course('one', 3, 80), course('two', 3, 70, 's2')];
   assert.equal(stats.semesterGpa(courses, 's1'), 5);
   assert.equal(stats.cumulativeCgpa(courses), 4.5);
+});
+
+test('provisional onboarding GPA includes incomplete scores while official GPA does not', () => {
+  const courses = [
+    course('complete', 3, 80, 's1', true),
+    course('in-progress', 3, 70, 's1', false),
+    course('legacy', 3, 80),
+  ];
+  assert.equal(stats.semesterGpa(courses, 's1'), 5);
+  assert.ok(Math.abs(stats.provisionalSemesterGpa(courses, 's1') - 14 / 3) < 1e-12);
+  assert.equal(stats.courseContributions(courses).length, 2);
+  assert.equal(stats.provisionalCourseContributions(courses).length, 3);
 });
 
 test('required average returns reachable, not reachable, secured, or unavailable', () => {
@@ -141,9 +154,10 @@ test('trajectory series is ordered and only includes explicit projections', () =
   assert.equal(series[1].projectedCgpa, 4.5);
 });
 
-test('course contributions use only valid, scored results', () => {
+test('course contributions use only valid, scored, officially complete results', () => {
   const contributions = stats.courseContributions([
     course('scored', 3, 80),
+    course('provisional', 3, 100, 's1', false),
     course('unscored', 3),
     course('invalid', 3, 120),
   ]);

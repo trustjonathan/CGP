@@ -310,7 +310,7 @@ function SemesterCard({
             {courses.length} course{courses.length !== 1 ? 's' : ''} · {totalCU} CU
           </div>
         </div>
-        {gpa !== null && <GradeBadge gp={gpa} label={`GPA ${formatGPA(gpa)}`} />}
+        {gpa !== null && <GradeBadge gp={gpa} label={`Official GPA ${formatGPA(gpa)}`} />}
         <button
           onClick={(e) => { e.stopPropagation(); onEditSemester(); }}
           className="p-1.5 rounded-lg text-ink-300 hover:text-primary-500 hover:bg-primary-50 transition-colors"

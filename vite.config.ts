@@ -3,9 +3,14 @@ import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
-const packageVersion = (JSON.parse(
+const packageMetadata = JSON.parse(
   readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
-) as { version: string }).version;
+) as { version?: unknown };
+const packageVersion = packageMetadata.version;
+if (typeof packageVersion !== 'string'
+  || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(packageVersion)) {
+  throw new Error('package.json must define a valid application version.');
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({

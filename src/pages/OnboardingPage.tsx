@@ -71,9 +71,10 @@ import {
   maximumGradePointForScale,
   MINIMUM_GRADUATION_CGPA,
   parseAcademicBaseline,
+  provisionalCourseContributions,
+  provisionalSemesterGpa,
   requiredAverageForRemaining,
   scoreCoverage,
-  semesterGpa,
   trajectoryWithBaseline,
   type SemesterBaseline,
 } from '@/lib/onboardingStats';
@@ -325,6 +326,7 @@ function makePreviewCourse(course: OnboardingDraft['courses'][number], score: nu
     assessments,
     topics: [],
     documents: [],
+    completed: false,
     createdAt: 0,
   };
 }
@@ -495,7 +497,7 @@ export function OnboardingPage() {
     }];
   const currentSemesterCourses = statsCourses.filter((course) => course.semesterId === previewSemesterId);
   const currentSemesterCoverage = scoreCoverage(currentSemesterCourses);
-  const currentSemesterGpa = semesterGpa(currentSemesterCourses, previewSemesterId);
+  const currentSemesterGpa = provisionalSemesterGpa(currentSemesterCourses, previewSemesterId);
   const baseline = {
     cgpa: committedBaseline.cgpa,
     creditsEarned: committedBaseline.creditsEarned,
@@ -513,7 +515,7 @@ export function OnboardingPage() {
     && parsedTargetInput <= targetInputMaximum;
   const previewTarget = draft.targetCGPA;
   const weights = courseWeights(previewCourses);
-  const contributions = courseContributions(currentSemesterCourses);
+  const contributions = provisionalCourseContributions(currentSemesterCourses);
   const allContributions = courseContributions(statsCourses);
   const qualityPoints = academicTotalsPreview.qualityPoints;
   const creditsDone = academicTotalsPreview.credits;
@@ -1288,7 +1290,7 @@ export function OnboardingPage() {
             <section className="mt-4 space-y-3" aria-labelledby="preview-results-title">
               <h3 id="preview-results-title" className="text-sm font-semibold text-ink-900">Results overview</h3>
               <div className="rounded-xl border border-ink-100 p-3">
-                <p className="text-xs font-medium text-ink-500">Current semester GPA</p>
+                <p className="text-xs font-medium text-ink-500">Provisional semester GPA from entered scores</p>
                 {currentSemesterGpa === null ? (
                   <p className="mt-1 text-sm text-ink-500">No valid scores yet.</p>
                 ) : (
@@ -1297,7 +1299,7 @@ export function OnboardingPage() {
                 <p className="mt-1 text-xs text-ink-500">{currentSemesterCoverage.label}</p>
                 <details className="mt-2 text-sm text-ink-700 dark:text-ink-200">
                   <summary className="cursor-pointer font-semibold">How is this calculated?</summary>
-                  <p className="mt-2 leading-5">Semester GPA = the sum of each scored course’s grade points × credits, divided by credits for scored courses. Unscored courses are excluded.</p>
+                  <p className="mt-2 leading-5">This provisional estimate uses all valid entered scores. Official semester GPA includes only courses marked complete; new courses remain provisional until you mark them complete.</p>
                   <ul className="mt-2 space-y-1">
                     {GRADE_SCALE.map((grade) => (
                       <li key={`${grade.gp}-${grade.label}`} className="tabular-nums">
@@ -1340,7 +1342,7 @@ export function OnboardingPage() {
               <h3 id="preview-finish-title" className="text-sm font-semibold text-ink-900">Setup summary</h3>
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-ink-50 p-3">
-                <p className="text-xs text-ink-600">{committedBaseline.creditsEarned !== null || committedBaseline.semesters.length > 0 ? 'Summary CGPA with baseline' : 'Current CGPA'}</p>
+                <p className="text-xs text-ink-600">{committedBaseline.creditsEarned !== null || committedBaseline.semesters.length > 0 ? 'Official CGPA with baseline' : 'Official CGPA (completed courses)'}</p>
                   <p className="mt-1 font-display text-lg font-bold text-ink-900">
                     {currentCgpa === null ? '—' : currentCgpa.toFixed(2)}
                   </p>
@@ -1396,11 +1398,13 @@ export function OnboardingPage() {
 
           {(draft.currentStep === 0 || draft.currentStep === 1) && (
             <section className="mt-4 rounded-xl border border-ink-100 p-3">
-              <p className="text-xs font-medium text-ink-500">Current CGPA from scored courses</p>
+              <p className="text-xs font-medium text-ink-500">Official CGPA (completed courses)</p>
               <p className="mt-1 font-display text-2xl font-bold text-ink-900">
                 {currentCgpa === null ? '—' : currentCgpa.toFixed(2)}
               </p>
-              <p className="mt-1 text-xs text-ink-500">{scoreCoverage(statsCourses).label}</p>
+              <p className="mt-1 text-xs text-ink-500">
+                {scoreCoverage(statsCourses).label}. New courses and their entered scores are provisional until marked complete.
+              </p>
             </section>
           )}
 

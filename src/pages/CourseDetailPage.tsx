@@ -20,6 +20,7 @@ import { useAppData } from '@/lib/useAppData';
 import {
   courseAggregatePercent,
   courseCurrentGP,
+  isCourseOfficiallyComplete,
   getGradeLabel,
   getGradePoint,
   getGradeColor,
@@ -98,6 +99,7 @@ export function CourseDetailPage() {
 
   const currentPct = courseAggregatePercent(course);
   const currentGP = courseCurrentGP(course);
+  const courseIsComplete = isCourseOfficiallyComplete(course);
   const completedTopicCount = course.topics.filter((topic) => topic.completed).length;
   const topicsExpanded = expandedTopicsByCourse[course.id] ?? false;
   const topicProgress = course.topics.length > 0
@@ -270,10 +272,25 @@ export function CourseDetailPage() {
           </div>
         </div>
 
+        <div className="mt-5 border-t border-ink-100 pt-4">
+          <label className="flex items-start gap-3 text-sm font-medium text-ink-800">
+            <input
+              type="checkbox"
+              checked={courseIsComplete}
+              onChange={(event) => updateCourse(course.id, { completed: event.target.checked })}
+              className="mt-0.5 h-4 w-4 accent-primary-600"
+            />
+            <span>Course completed</span>
+          </label>
+          <p className="mt-1 pl-7 text-xs text-ink-500">
+            In-progress course grades are provisional and excluded from official GPA/CGPA. Older courses without a completion flag are treated as completed.
+          </p>
+        </div>
+
         {/* Current status bar */}
         <div className="grid grid-cols-3 gap-4 mt-5 pt-5 border-t border-ink-100">
           <div>
-            <div className="text-xs text-ink-500 mb-1">Current Score</div>
+            <div className="text-xs text-ink-500 mb-1">{courseIsComplete ? 'Official Score' : 'Provisional Score'}</div>
             <div className="font-display font-bold text-lg text-ink-900">
               {currentPct !== null ? `${currentPct.toFixed(1)}%` : '--'}
             </div>
@@ -282,7 +299,7 @@ export function CourseDetailPage() {
             )}
           </div>
           <div>
-            <div className="text-xs text-ink-500 mb-1">Current Grade</div>
+            <div className="text-xs text-ink-500 mb-1">{courseIsComplete ? 'Official Grade' : 'Provisional Grade'}</div>
             <div className="font-display font-bold text-lg text-ink-900">
               {currentGP !== null ? getGradeLabel(currentPct!) : '--'}
             </div>

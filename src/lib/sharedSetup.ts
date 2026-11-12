@@ -5,6 +5,7 @@ export interface SharedSetupCourse {
   code?: string;
   creditUnits: number;
   targetGradePoint?: number;
+  completed?: boolean;
   assessments?: Array<Pick<Assessment, 'name' | 'weight' | 'total'>>;
   topics?: Array<Pick<CourseTopic, 'title'>>;
 }

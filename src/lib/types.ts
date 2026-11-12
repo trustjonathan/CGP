@@ -32,6 +32,8 @@ export interface CourseUnit {
   assessments: Assessment[];
   topics: CourseTopic[];
   documents: CourseDocument[];
+  /** Missing means a legacy course and is treated as complete for official GPA calculations. */
+  completed?: boolean;
   createdAt: number;
 }
 
@@ -86,6 +88,7 @@ export const GRADE_SCALE: { gp: number; label: string; minPercent: number }[] = 
 
 export const MAX_GRADE_POINT = Math.max(...GRADE_SCALE.map((grade) => grade.gp));
 export const TARGET_CGPA = MAX_GRADE_POINT;
+export const LEGACY_COURSE_COMPLETED_DEFAULT = true;
 
 export function minPercentForGradePoint(gp: number): number {
   const normalized = Number.isFinite(gp) ? Math.max(0, Math.min(MAX_GRADE_POINT, gp)) : MAX_GRADE_POINT;
@@ -149,6 +152,16 @@ export function courseCurrentGP(course: CourseUnit): number | null {
   return getGradePoint(pct);
 }
 
+export function isCourseOfficiallyComplete(course: Pick<CourseUnit, 'completed'>): boolean {
+  return course.completed === true
+    || (course.completed === undefined && LEGACY_COURSE_COMPLETED_DEFAULT);
+}
+
+export function courseOfficialGP(course: CourseUnit): number | null {
+  if (!isCourseOfficiallyComplete(course)) return null;
+  return courseCurrentGP(course);
+}
+
 export function semesterGPA(courses: CourseUnit[], semesterId: string): number | null {
   const semCourses = courses.filter((c) => c.semesterId === semesterId);
   if (semCourses.length === 0) return null;
@@ -156,7 +169,7 @@ export function semesterGPA(courses: CourseUnit[], semesterId: string): number |
   let totalCU = 0;
   let hasGraded = false;
   for (const c of semCourses) {
-    const gp = courseCurrentGP(c);
+    const gp = courseOfficialGP(c);
     if (gp !== null) {
       totalWeightedGP += gp * c.creditUnits;
       totalCU += c.creditUnits;
@@ -172,7 +185,7 @@ export function cgpa(courses: CourseUnit[]): number | null {
   let totalCU = 0;
   let hasGraded = false;
   for (const c of courses) {
-    const gp = courseCurrentGP(c);
+    const gp = courseOfficialGP(c);
     if (gp !== null) {
       totalWeightedGP += gp * c.creditUnits;
       totalCU += c.creditUnits;
@@ -185,7 +198,7 @@ export function cgpa(courses: CourseUnit[]): number | null {
 
 export function totalCompletedCredits(courses: CourseUnit[]): number {
   return courses.reduce((sum, c) => {
-    return courseCurrentGP(c) !== null ? sum + c.creditUnits : sum;
+    return courseOfficialGP(c) !== null ? sum + c.creditUnits : sum;
   }, 0);
 }
 

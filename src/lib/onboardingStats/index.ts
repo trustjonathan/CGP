@@ -2,6 +2,7 @@ import {
   GRADE_SCALE,
   cgpa as calculateCgpa,
   courseCurrentGP,
+  isCourseOfficiallyComplete,
   semesterGPA as calculateSemesterGpa,
   type CourseUnit,
   type Semester,
@@ -164,6 +165,16 @@ export function semesterGpa(courses: CourseUnit[], semesterId: string): number |
   return calculateSemesterGpa(validCourses(courses), semesterId);
 }
 
+export function provisionalSemesterGpa(courses: CourseUnit[], semesterId: string): number | null {
+  const contributions = provisionalCourseContributions(
+    courses.filter((course) => course.semesterId === semesterId),
+  );
+  const credits = contributions.reduce((sum, course) => sum + course.creditUnits, 0);
+  if (credits === 0) return null;
+  const qualityPoints = contributions.reduce((sum, course) => sum + (course.qualityPoints ?? 0), 0);
+  return qualityPoints / credits;
+}
+
 export function cumulativeCgpa(courses: CourseUnit[]): number | null {
   return calculateCgpa(validCourses(courses));
 }
@@ -315,6 +326,14 @@ export function trajectoryWithBaseline(
 }
 
 export function courseContributions(courses: CourseUnit[]): CourseContribution[] {
+  return buildCourseContributions(courses.filter(isCourseOfficiallyComplete));
+}
+
+export function provisionalCourseContributions(courses: CourseUnit[]): CourseContribution[] {
+  return buildCourseContributions(courses);
+}
+
+function buildCourseContributions(courses: CourseUnit[]): CourseContribution[] {
   const scoredCourses = validCourses(courses)
     .map((course) => ({
       course,

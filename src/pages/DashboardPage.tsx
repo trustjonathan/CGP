@@ -35,6 +35,7 @@ import {
   MAX_GRADE_POINT,
   getGradeLabel,
   getGradeColor,
+  isCourseOfficiallyComplete,
   type CourseUnit,
 } from '@/lib/types';
 import { calculateCourseForecast, formatPoints, getGapToTarget } from '@/lib/forecast';
@@ -269,7 +270,7 @@ export function DashboardPage() {
             <div className="card p-6 flex flex-col items-center justify-center">
               <div className="flex items-center gap-2 text-ink-500 text-sm mb-3">
                 <Target className="w-4 h-4" />
-                <span className="font-medium">Current CGPA</span>
+                <span className="font-medium">Official CGPA</span>
               </div>
               <ProgressRing
                 value={currentCGPA}
@@ -311,7 +312,7 @@ export function DashboardPage() {
                   <h2 id="target-progress-title" className="font-medium">CGPA goal</h2>
                 </div>
                 <p className="mt-2 flex flex-wrap items-baseline gap-x-2 font-display text-lg font-bold text-ink-900 tabular-nums">
-                  <span>Current {currentCGPA?.toFixed(2) ?? '--'}</span>
+                  <span>Official {currentCGPA?.toFixed(2) ?? '--'}</span>
                   <span aria-hidden="true" className="text-sm text-ink-400">→</span>
                   <span>Target {targetIsSet ? targetCGPA.toFixed(2) : '--'}</span>
                 </p>
@@ -415,9 +416,9 @@ export function DashboardPage() {
             {/* Semester GPA trend */}
             <div className="card p-5">
               <h3 className="font-display font-semibold text-ink-900 mb-1">
-                Semester GPA Trend
+                Official Semester GPA Trend
               </h3>
-              <p className="text-xs text-ink-500 mb-4">GPA per semester vs target line</p>
+              <p className="text-xs text-ink-500 mb-4">Completed courses only; in-progress grades are provisional</p>
               {chartData.length === 0 || chartData.every((d) => d.gpa === null) ? (
                 <div className="h-64 flex items-center justify-center text-ink-400 text-sm">
                   No graded semesters yet
@@ -430,7 +431,7 @@ export function DashboardPage() {
                     <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 12, fill: '#64748b' }} />
                     <Tooltip
                       contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
-                      formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'GPA']}
+                      formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'Official GPA']}
                     />
                     {targetIsSet && <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="5 5" label={{ value: 'Target', fontSize: 10, fill: '#a21caf' }} />}
                     <Line
@@ -450,9 +451,9 @@ export function DashboardPage() {
             {/* Cumulative CGPA progress */}
             <div className="card p-5">
               <h3 className="font-display font-semibold text-ink-900 mb-1">
-                Cumulative CGPA Progress
+                Official Cumulative CGPA Progress
               </h3>
-              <p className="text-xs text-ink-500 mb-4">How your CGPA has evolved over time</p>
+              <p className="text-xs text-ink-500 mb-4">Based on completed courses; in-progress grades are excluded</p>
               {cumulativeData.length === 0 || cumulativeData.every((d) => d.cgpa === null) ? (
                 <div className="h-64 flex items-center justify-center text-ink-400 text-sm">
                   No graded data yet
@@ -465,7 +466,7 @@ export function DashboardPage() {
                     <YAxis domain={[0, 5]} tick={{ fontSize: 12, fill: '#64748b' }} />
                     <Tooltip
                       contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
-                      formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'CGPA']}
+                      formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'Official CGPA']}
                     />
                     {targetIsSet && <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="5 5" />}
                     <Line
@@ -519,6 +520,11 @@ export function DashboardPage() {
                           <span className="text-xs text-ink-400">No scores entered yet</span>
                         )}
                       </div>
+                      {!isCourseOfficiallyComplete(course) && (
+                        <span className="mt-1 inline-flex rounded-full bg-warning-100 px-2 py-0.5 text-[10px] font-medium text-warning-800">
+                          Provisional · excluded from official GPA/CGPA
+                        </span>
+                      )}
                     </div>
                     {gp !== null && <GradeBadge gp={gp} label={getGradeLabel(pct!)} />}
                   </Link>

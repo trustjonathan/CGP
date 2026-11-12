@@ -31,10 +31,17 @@ import {
   getGradeColor,
   MAX_GRADE_POINT,
   formatGPA,
+  type CourseUnit,
 } from '@/lib/types';
 import { formatPoints, runWhatIf } from '@/lib/forecast';
 import { targetPercentForCourse, targetPercentForSettings, targetSummary } from '@/lib/gradingConfig';
 import { ProgressBar, EmptyState } from '@/components/ui';
+
+function hasRemainingAssessments(course: CourseUnit) {
+  return course.assessments.some((assessment) => (
+    assessment.weight > 0 && (assessment.obtained === null || assessment.total <= 0)
+  ));
+}
 
 export function SimulatorPage() {
   const { data } = useAppData();
@@ -51,12 +58,10 @@ export function SimulatorPage() {
 
   const currentCGPA = cgpa(data.courses);
 
-  const hasUngraded = useMemo(() => {
-    return data.courses.some((c) => {
-      const pct = courseAggregatePercent(c);
-      return pct === null && c.assessments.length > 0;
-    });
-  }, [data.courses]);
+  const hasForecastableCourses = useMemo(
+    () => data.courses.some(hasRemainingAssessments),
+    [data.courses],
+  );
 
   const result = useMemo(
     () => runWhatIf(data.courses, projectedScores, defaultScores, courseTargetPercents),
@@ -68,7 +73,7 @@ export function SimulatorPage() {
     score,
     cgpa: runWhatIf(data.courses, Object.fromEntries(
       data.courses
-        .filter((course) => courseAggregatePercent(course) === null)
+        .filter(hasRemainingAssessments)
         .map((course) => [course.id, score])
     ), defaultScores, courseTargetPercents).projectedCGPA,
   })), [data.courses, courseTargetPercents, defaultScores, targetPercent]);
@@ -80,8 +85,7 @@ export function SimulatorPage() {
   const applyGlobal = useCallback(() => {
     const updates: Record<string, number> = {};
     for (const c of data.courses) {
-      const pct = courseAggregatePercent(c);
-      if (pct === null) {
+      if (hasRemainingAssessments(c)) {
         updates[c.id] = effectiveGlobalScore;
       }
     }
@@ -129,7 +133,7 @@ export function SimulatorPage() {
       gp: cp.projectedGP,
       grade: cp.gradeLabel,
       percent: cp.projectedPercent,
-      isProjected: currentPercent === null,
+      isProjected: hasRemainingAssessments(course),
       projectedScore: projectedScores[course.id] ?? defaultScores[course.id],
     };
     });
@@ -155,16 +159,15 @@ export function SimulatorPage() {
       <div>
         <h1 className="font-display text-2xl font-bold text-ink-900">What-If Simulator</h1>
         <p className="text-ink-500 text-sm">
-          Adjust projected final exam scores to see how your CGPA would change
+          Estimate outcomes for remaining assessments without changing saved marks or official GPA/CGPA
         </p>
       </div>
 
-      {!hasUngraded && (
+      {!hasForecastableCourses && (
         <div className="card p-4 flex items-start gap-3 bg-primary-50/50 border-primary-200">
           <Info className="w-5 h-5 text-primary-500 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-ink-700">
-            All your courses have complete scores. The simulator shows your final CGPA.
-            Add courses with unscored assessments to see projections.
+            There are no remaining assessments to estimate. This projection does not alter saved marks or the official CGPA.
           </div>
         </div>
       )}
@@ -214,11 +217,11 @@ export function SimulatorPage() {
 
         {/* Current vs projected comparison */}
         <div className="lg:col-span-2 card p-5">
-          <h3 className="font-display font-semibold text-ink-900 mb-4">Current vs Projected</h3>
+          <h3 className="font-display font-semibold text-ink-900 mb-4">Official vs Projected</h3>
           <div className="space-y-4">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-ink-600">Current CGPA (graded only)</span>
+                <span className="text-sm font-medium text-ink-600">Official CGPA (completed courses only)</span>
                 <span className="font-display font-bold text-lg text-ink-900">
                   {formatGPA(currentCGPA)}
                 </span>
@@ -308,10 +311,10 @@ export function SimulatorPage() {
               <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 11, fill: '#64748b' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
-                formatter={(value, name) => [typeof value === 'number' ? value.toFixed(2) : '--', name === 'current' ? 'Current GPA' : 'Projected GPA']}
+                formatter={(value, name) => [typeof value === 'number' ? value.toFixed(2) : '--', name === 'current' ? 'Official GPA' : 'Projected GPA']}
               />
               <Legend />
-              <Bar dataKey="current" name="Current GPA" fill="#94a3b8" radius={[5, 5, 0, 0]} />
+              <Bar dataKey="current" name="Official GPA" fill="#94a3b8" radius={[5, 5, 0, 0]} />
               <Bar dataKey="projected" name="Projected GPA" fill="#2563eb" radius={[5, 5, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -364,12 +367,12 @@ export function SimulatorPage() {
             const pct = courseAggregatePercent(course);
             const projection = result.courseProjections.find((cp) => cp.courseId === course.id);
             const score = projectedScores[course.id] ?? defaultScores[course.id];
-            const isUngraded = pct === null;
+            const hasRemaining = hasRemainingAssessments(course);
             const remainingWeight = course.assessments
               .filter((assessment) => assessment.weight > 0 && (assessment.obtained === null || assessment.total <= 0))
               .reduce((sum, assessment) => sum + assessment.weight, 0);
             return (
-              <div key={course.id} className={`p-4 rounded-lg border ${isUngraded ? 'border-primary-200 bg-primary-50/30' : 'border-ink-100 bg-ink-50/30'}`}>
+              <div key={course.id} className={`p-4 rounded-lg border ${hasRemaining ? 'border-primary-200 bg-primary-50/30' : 'border-ink-100 bg-ink-50/30'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -377,10 +380,12 @@ export function SimulatorPage() {
                       <span className="text-xs text-ink-400 font-mono">{course.code}</span>
                     </div>
                     <div className="text-xs text-ink-500 mt-0.5">
-                      {course.creditUnits} CU · {isUngraded ? `${remainingWeight}% of course weight still open` : `Current: ${pct?.toFixed(1)}% (${getGradeLabel(pct!)})`}
+                      {course.creditUnits} CU · {hasRemaining
+                        ? `${remainingWeight}% of course weight still open${pct !== null ? ` · provisional ${pct.toFixed(1)}% so far` : ''}`
+                        : `Current: ${pct?.toFixed(1) ?? '--'}%${pct !== null ? ` (${getGradeLabel(pct)})` : ''}`}
                     </div>
                   </div>
-                  {projection && isUngraded && (
+                  {projection && hasRemaining && (
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="text-sm font-semibold text-ink-900">{projection.projectedPercent.toFixed(1)}%</span>
                       <span className={`badge ${
@@ -394,7 +399,7 @@ export function SimulatorPage() {
                     </div>
                   )}
                 </div>
-                {isUngraded && (
+                {hasRemaining && (
                   <>
                     <div className="flex items-center gap-4">
                       <input
@@ -440,7 +445,7 @@ export function SimulatorPage() {
       {chartData.length > 0 && (
         <div className="card p-5">
           <h3 className="font-display font-semibold text-ink-900 mb-1">Course outcome analysis</h3>
-          <p className="text-xs text-ink-500 mb-4">Projected grade points across all courses; completed scores remain unchanged</p>
+          <p className="text-xs text-ink-500 mb-4">Entered marks stay unchanged; estimates apply only to remaining assessments</p>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />

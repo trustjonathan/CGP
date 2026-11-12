@@ -281,6 +281,7 @@ export function ImportSetupPage({ onImported }: { onImported?: () => void } = {}
             assessments,
             topics,
             documents: [],
+            completed: templateCourse.completed ?? false,
             createdAt: now + semesterIndex * 1000 + courseIndex + 1,
           };
           records.push({

@@ -1,7 +1,7 @@
 {
   "name": "cgp-academic-suite",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "CGP is a focused academic performance tool for tracking courses, planning semesters, and understanding CGPA.",
   "author": "Trust",
   "type": "module",
@@ -9,7 +9,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "vitest run src/lib/gradingConfig.test.ts src/lib/forecast.test.ts src/lib/academicCalendar.test.ts && node --test src/lib/sharedSetup.test.mjs src/lib/vaultBackup.test.mjs src/lib/onboardingStats/index.test.mjs",
+    "test": "vitest run src/lib/gradingConfig.test.ts src/lib/forecast.test.ts src/lib/academicCalendar.test.ts src/lib/syncContract.test.ts src/features/calendar/calendarModel.test.ts src/features/calendar/calendarReminders.test.ts && node --test src/lib/sharedSetup.test.mjs src/lib/vaultBackup.test.mjs src/lib/onboardingStats/index.test.mjs",
+    "test:sync": "vitest run src/lib/syncContract.test.ts",
+    "check:release-source": "node scripts/check-release-source.mjs",
+    "smoke:preview": "node scripts/smoke-preview.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "docker:build": "docker build --tag cgpa-tracker .",
@@ -48,6 +51,9 @@
       "installerIcon": "assets/icon.ico",
       "uninstallerIcon": "assets/icon.ico"
     }
+  },
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

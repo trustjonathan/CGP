@@ -1,4 +1,6 @@
 import type { AppData, CourseUnit, Semester } from './types';
+import type { AccountSyncRecord, CloudRecord, RecordType } from './syncContract';
+import { orderPendingRecords, reconcileAccountRecords } from './syncContract';
 
 const DATABASE_NAME = 'cgpa-tracker-local';
 const DATABASE_VERSION = 4;
@@ -8,8 +10,6 @@ const ACCOUNT_RECORD_STORE = 'account_records';
 const OUTBOX_STORE = 'sync_outbox';
 const ONBOARDING_STORE = 'onboarding_state';
 
-type RecordType = 'semester' | 'course' | 'settings';
-
 export interface SyncRecord {
   id: string;
   record_type: RecordType;
@@ -17,12 +17,6 @@ export interface SyncRecord {
   synced: boolean;
   updated_at: string;
   is_deleted: boolean;
-}
-
-export interface AccountSyncRecord extends SyncRecord {
-  key: string;
-  user_id: string;
-  revision: number;
 }
 
 interface AccountOutboxItem {
@@ -113,6 +107,52 @@ export async function readAccountRecords(userId: string): Promise<AccountSyncRec
   }
 }
 
+export async function readPendingAccountRecords(userId: string): Promise<AccountSyncRecord[]> {
+  const database = await openDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction([ACCOUNT_RECORD_STORE, OUTBOX_STORE], 'readonly');
+      const recordsRequest = transaction.objectStore(ACCOUNT_RECORD_STORE).index('user_id').getAll(userId);
+      const outboxRequest = transaction.objectStore(OUTBOX_STORE).index('user_id').getAll(userId);
+      let records: AccountSyncRecord[] | undefined;
+      let outbox: AccountOutboxItem[] | undefined;
+      const result: AccountSyncRecord[] = [];
+      let readError: Error | null = null;
+      const complete = () => {
+        if (!records || !outbox || readError) return;
+        const byId = new Map(records.map((record) => [record.id, record]));
+        for (const item of outbox) {
+          if (item.status !== 'pending') continue;
+          const record = byId.get(item.record_id);
+          if (!record) {
+            readError = new Error(`Pending sync item ${item.record_id} has no local account record.`);
+            return;
+          }
+          result.push(record);
+        }
+      };
+      recordsRequest.onsuccess = () => {
+        records = recordsRequest.result as AccountSyncRecord[];
+        complete();
+      };
+      outboxRequest.onsuccess = () => {
+        outbox = outboxRequest.result as AccountOutboxItem[];
+        complete();
+      };
+      recordsRequest.onerror = () => transaction.abort();
+      outboxRequest.onerror = () => transaction.abort();
+      transaction.oncomplete = () => {
+        if (readError) reject(readError);
+        else resolve(orderPendingRecords(result));
+      };
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error || new Error('Pending account sync items could not be read.'));
+    });
+  } finally {
+    database.close();
+  }
+}
+
 export async function loadAccountData(userId: string): Promise<AppData | null> {
   const records = await readAccountRecords(userId);
   return records.length ? appDataFromRecords(records) : null;
@@ -182,7 +222,17 @@ export async function persistAccountData(userId: string, data: AppData): Promise
 
 export async function mergeCloudSnapshot(
   userId: string,
-  cloudRecords: Array<Omit<SyncRecord, 'synced' | 'updated_at'> & { revision: number }>,
+  cloudRecords: CloudRecord[],
+  authoritativeRecordIds: readonly string[] = [],
+) {
+  await writeCloudSnapshot(userId, cloudRecords, true, authoritativeRecordIds);
+}
+
+async function writeCloudSnapshot(
+  userId: string,
+  cloudRecords: CloudRecord[],
+  preservePending: boolean,
+  authoritativeRecordIds: readonly string[] = [],
 ) {
   const database = await openDatabase();
   try {
@@ -193,27 +243,32 @@ export async function mergeCloudSnapshot(
       const request = store.index('user_id').getAll(userId);
       request.onsuccess = () => {
         const existing = request.result as AccountSyncRecord[];
-        const byId = new Map(existing.map((record) => [record.id, record]));
-        const now = new Date().toISOString();
-        for (const remote of cloudRecords) {
-          const previous = byId.get(remote.id);
-          if (previous && !previous.synced) continue;
-          const payload = remote.record_type === 'course'
-            ? {
-                ...remote.payload as CourseUnit,
-                documents: (previous?.payload as CourseUnit | undefined)?.documents ?? [],
-              }
-            : remote.payload;
-          store.put({
-            ...remote,
-            payload,
-            key: accountKey(userId, remote.id),
-            user_id: userId,
-            synced: true,
-            updated_at: now,
-          } satisfies AccountSyncRecord);
-          outbox.delete(accountKey(userId, remote.id));
-        }
+        const next = reconcileAccountRecords(userId, existing, cloudRecords, {
+          preservePending,
+          authoritativeRecordIds,
+        });
+        const nextKeys = new Set(next.map((record) => record.key));
+        existing.forEach((record) => {
+          if (!nextKeys.has(record.key)) {
+            store.delete(record.key);
+            outbox.delete(accountKey(userId, record.id));
+          }
+        });
+        next.forEach((record) => {
+          store.put(record);
+          const outboxId = accountKey(userId, record.id);
+          if (record.synced) {
+            outbox.delete(outboxId);
+          } else {
+            outbox.put({
+              id: outboxId,
+              user_id: userId,
+              record_id: record.id,
+              updated_at: record.updated_at,
+              status: 'pending',
+            } satisfies AccountOutboxItem);
+          }
+        });
       };
       request.onerror = () => transaction.abort();
       transaction.oncomplete = () => resolve();

@@ -71,6 +71,7 @@ function createTemplatePayload(
         ...(course.code ? { code: normalizeSharedText(course.code) } : {}),
         creditUnits: course.creditUnits,
         targetGradePoint: course.targetGradePoint,
+        completed: course.completed ?? false,
         ...(includeAssessments ? {
           assessments: (course.assessments ?? []).map(({ name, weight, total }) => ({
             name: normalizeSharedText(name),

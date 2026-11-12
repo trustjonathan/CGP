@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { APP_VERSION } from '@/lib/appVersion';
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -16,15 +17,14 @@ import {
   WifiOff,
 } from 'lucide-react';
 
-const RELEASE_API_URL = 'https://api.github.com/repos/trustjonathan/CGP/releases/latest';
+const RELEASE_API_URL = `https://api.github.com/repos/trustjonathan/CGP/releases/tags/v${encodeURIComponent(APP_VERSION)}`;
 const RELEASES_URL = 'https://github.com/trustjonathan/CGP/releases';
-const EXE_DOWNLOAD_URL = 'https://github.com/trustjonathan/CGP/releases/latest/download/cgp-Setup.exe';
-const APK_DOWNLOAD_URL = 'https://github.com/trustjonathan/CGP/releases/latest/download/cgp-app-release.apk';
+const EXE_DOWNLOAD_URL = `https://github.com/trustjonathan/CGP/releases/download/v${encodeURIComponent(APP_VERSION)}/cgp-Setup.exe`;
+const APK_DOWNLOAD_URL = `https://github.com/trustjonathan/CGP/releases/download/v${encodeURIComponent(APP_VERSION)}/cgp-app-release.apk`;
 const CHECK_TIMEOUT_MS = 12_000;
 
-interface LatestRelease {
+interface VersionedRelease {
   version: string;
-  title: string;
   publishedAt: Date | null;
   notes: string;
   assets: Set<string>;
@@ -32,7 +32,7 @@ interface LatestRelease {
 
 type ReleaseStatus =
   | { kind: 'checking' }
-  | { kind: 'available'; release: LatestRelease }
+  | { kind: 'available'; release: VersionedRelease }
   | { kind: 'none' }
   | { kind: 'error'; message: string };
 
@@ -111,7 +111,7 @@ function DownloadCard({
 export function ReleasePage() {
   const [status, setStatus] = useState<ReleaseStatus>({ kind: 'checking' });
 
-  const checkLatestRelease = useCallback(async (signal?: AbortSignal) => {
+  const checkVersionRelease = useCallback(async (signal?: AbortSignal) => {
     const timeoutController = new AbortController();
     const timeout = window.setTimeout(() => timeoutController.abort(), CHECK_TIMEOUT_MS);
     const forwardAbort = () => timeoutController.abort();
@@ -139,13 +139,12 @@ export function ReleasePage() {
       }
       const releaseData = data as {
         tag_name?: unknown;
-        name?: unknown;
         body?: unknown;
         published_at?: unknown;
         assets?: unknown;
       };
-      if (typeof releaseData.tag_name !== 'string' || !/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(releaseData.tag_name)) {
-        throw new Error('The latest GitHub release does not have a valid version tag.');
+      if (releaseData.tag_name !== `v${APP_VERSION}`) {
+        throw new Error(`The GitHub release tag does not match this web build (v${APP_VERSION}).`);
       }
 
       const assets = Array.isArray(releaseData.assets)
@@ -166,10 +165,7 @@ export function ReleasePage() {
       setStatus({
         kind: 'available',
         release: {
-          version: releaseData.tag_name.replace(/^v/, ''),
-          title: typeof releaseData.name === 'string' && releaseData.name.trim()
-            ? releaseData.name.trim()
-            : `CGP ${releaseData.tag_name}`,
+          version: APP_VERSION,
           publishedAt: publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : null,
           notes: typeof releaseData.body === 'string' ? releaseData.body.trim() : '',
           assets: new Set(assets),
@@ -192,10 +188,10 @@ export function ReleasePage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void checkLatestRelease(controller.signal);
+    void checkVersionRelease(controller.signal);
 
     const refreshOnFocus = () => {
-      if (document.visibilityState === 'visible') void checkLatestRelease();
+      if (document.visibilityState === 'visible') void checkVersionRelease();
     };
     window.addEventListener('focus', refreshOnFocus);
     document.addEventListener('visibilitychange', refreshOnFocus);
@@ -205,7 +201,7 @@ export function ReleasePage() {
       window.removeEventListener('focus', refreshOnFocus);
       document.removeEventListener('visibilitychange', refreshOnFocus);
     };
-  }, [checkLatestRelease]);
+  }, [checkVersionRelease]);
 
   const release = status.kind === 'available' ? status.release : null;
   const hasWindowsInstaller = release?.assets.has('cgp-Setup.exe') ?? false;
@@ -245,11 +241,12 @@ export function ReleasePage() {
           </div>
         </section>
 
-        <section aria-labelledby="latest-release-heading" className="space-y-4">
+        <section aria-labelledby="build-release-heading" className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-700">Release channel</p>
-              <h2 id="latest-release-heading" className="mt-1 font-display text-2xl font-bold text-ink-900">Latest stable release</h2>
+              <h2 id="build-release-heading" className="mt-1 font-display text-2xl font-bold text-ink-900">Release for this web build</h2>
+              <p className="mt-1 text-sm text-ink-600">App version: v{APP_VERSION}</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <a href={RELEASES_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-600 hover:text-primary-700">
@@ -257,7 +254,7 @@ export function ReleasePage() {
               </a>
               <button
                 type="button"
-                onClick={() => void checkLatestRelease()}
+                onClick={() => void checkVersionRelease()}
                 disabled={status.kind === 'checking'}
                 className="btn-secondary"
               >
@@ -269,7 +266,7 @@ export function ReleasePage() {
 
           {status.kind === 'checking' && (
             <div role="status" className="rounded-xl border border-primary-200 bg-primary-50 p-4 text-sm text-primary-800">
-              Checking GitHub for the latest CGP release…
+              Checking GitHub for the release matching this web build…
             </div>
           )}
           {status.kind === 'none' && (
@@ -277,8 +274,8 @@ export function ReleasePage() {
               <div className="flex items-start gap-3">
                 <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-ink-500" aria-hidden="true" />
                 <div>
-                  <p className="font-semibold text-ink-900">No public release is available yet.</p>
-                  <p className="mt-1 text-sm leading-6 text-ink-600">The official download buttons will become available when a stable GitHub release is published with the Windows and Android files.</p>
+                  <p className="font-semibold text-ink-900">No public release is available for v{APP_VERSION}.</p>
+                  <p className="mt-1 text-sm leading-6 text-ink-600">The official download buttons will become available when the matching GitHub release is published with the Windows and Android files.</p>
                 </div>
               </div>
             </div>
@@ -293,7 +290,7 @@ export function ReleasePage() {
           )}
           {release && (
             <div className="flex flex-col gap-2 rounded-xl border border-success-200 bg-success-50 p-4 text-sm text-success-900 sm:flex-row sm:items-center sm:justify-between">
-              <span className="inline-flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {release.title} · v{release.version}</span>
+              <span className="inline-flex items-center gap-2 font-semibold"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> CGP v{release.version}</span>
               <span className="text-xs text-success-800">Published {formatReleaseDate(release.publishedAt)}</span>
             </div>
           )}
@@ -341,14 +338,14 @@ export function ReleasePage() {
             <div className="min-w-0">
               <h2 id="publishing-heading" className="font-display text-lg font-bold text-ink-900">How official downloads are published</h2>
               <p className="mt-2 text-sm leading-6 text-ink-600">
-                This page follows the latest stable release in the official CGP GitHub repository. To publish an update, create a versioned release (for example, <code className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-xs text-ink-800">v1.1.0</code>) and attach the installer files using these exact names:
+                This page follows the release whose tag matches the app version in <code className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-xs text-ink-800">package.json</code>. Create that matching version tag and attach the installer files using these exact names:
               </p>
               <ul className="mt-4 space-y-2 text-sm text-ink-700">
                 <li><span className="font-semibold">Windows:</span> <code className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-xs">cgp-Setup.exe</code></li>
                 <li><span className="font-semibold">Android:</span> <code className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-xs">cgp-app-release.apk</code></li>
               </ul>
               <p className="mt-4 text-xs leading-5 text-ink-500">
-                The page checks GitHub’s release metadata and enables only downloads attached to that release. Draft releases are not shown; once published, the page updates automatically. Android may ask you to allow installation from your browser.
+                This page checks only the GitHub release tagged v{APP_VERSION}, matching the version bundled into this web build. Downloads are enabled only when the matching installer is attached to that release. Android may ask you to allow installation from your browser.
               </p>
             </div>
           </div>

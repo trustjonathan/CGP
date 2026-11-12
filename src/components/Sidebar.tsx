@@ -22,15 +22,14 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import packageJson from '../../package.json';
 import { useAppData } from '@/lib/useAppData';
+import { APP_VERSION } from '@/lib/appVersion';
 import { useAuth } from '@/contexts/useAuth';
 import { targetSummary } from '@/lib/gradingConfig';
 
 const MIN_SIDEBAR_WIDTH = 224;
 const MAX_SIDEBAR_WIDTH = 360;
 const RELEASE_API_URL = 'https://api.github.com/repos/trustjonathan/CGP/releases/latest';
-const APP_VERSION = packageJson.version;
 
 const primaryItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },

@@ -21,6 +21,7 @@ import {
   semesterGPA,
   courseAggregatePercent,
   courseCurrentGP,
+  isCourseOfficiallyComplete,
   getGradeLabel,
   getGradeColor,
   formatGPA,
@@ -77,9 +78,11 @@ export function AnalyticsPage() {
       percent: courseAggregatePercent(c),
       gp: courseCurrentGP(c),
       cu: c.creditUnits,
+      official: isCourseOfficiallyComplete(c),
     }))
     .filter((d) => d.percent !== null)
     .sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0));
+  const officialCourseCount = courseData.filter((course) => course.official).length;
 
   const barColors = ['#16a34a', '#2563eb', '#d946ef', '#f59e0b', '#ef4444'];
   const ringGradeColor = currentCGPA === null ? 'error' : getGradeColor(currentCGPA);
@@ -98,7 +101,7 @@ export function AnalyticsPage() {
       {/* Top stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Current CGPA"
+          label="Official CGPA"
           value={formatGPA(currentCGPA)}
           icon={Target}
           color={currentCGPA !== null && currentCGPA >= targetCGPA ? 'success' : 'primary'}
@@ -110,11 +113,11 @@ export function AnalyticsPage() {
           color="accent"
         />
         <StatCard
-          label="Courses Graded"
+          label="Courses with Marks"
           value={courseData.length}
           icon={BookOpen}
           color="primary"
-          hint={`of ${data.courses.length} total`}
+          hint={`${officialCourseCount} included in official GPA`}
         />
         <StatCard
           label="Credits Earned"
@@ -126,8 +129,8 @@ export function AnalyticsPage() {
 
       {/* Semester GPA bar chart */}
       <div className="card p-5">
-        <h3 className="font-display font-semibold text-ink-900 mb-1">Semester GPA Comparison</h3>
-        <p className="text-xs text-ink-500 mb-4">GPA by semester with target reference line</p>
+        <h3 className="font-display font-semibold text-ink-900 mb-1">Official Semester GPA Comparison</h3>
+        <p className="text-xs text-ink-500 mb-4">Completed courses only; in-progress grades are provisional</p>
         {semesterData.length === 0 ? (
           <div className="h-64 flex items-center justify-center text-ink-400 text-sm">
             No graded semesters yet
@@ -140,7 +143,7 @@ export function AnalyticsPage() {
               <YAxis domain={[0, MAX_GRADE_POINT]} tick={{ fontSize: 12, fill: '#64748b' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 13 }}
-                formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'GPA']}
+                formatter={(v) => [formatGPA(typeof v === 'number' ? v : null), 'Official GPA']}
               />
               {targetIsSet && <ReferenceLine y={targetCGPA} stroke="#d946ef" strokeDasharray="5 5" />}
               <Bar dataKey="gpa" radius={[6, 6, 0, 0]} maxBarSize={60}>
@@ -157,7 +160,7 @@ export function AnalyticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* CGPA Ring */}
         <div className="card p-6 flex flex-col items-center justify-center">
-          <h3 className="font-display font-semibold text-ink-900 mb-4">Overall CGPA</h3>
+          <h3 className="font-display font-semibold text-ink-900 mb-4">Overall Official CGPA</h3>
           <ProgressRing value={currentCGPA} max={MAX_GRADE_POINT} size={140} stroke={12} label={`out of ${MAX_GRADE_POINT.toFixed(1)}`} color={ringColor} />
           <div className="mt-4 text-center">
             {currentCGPA !== null && (
@@ -183,7 +186,7 @@ export function AnalyticsPage() {
         {/* Course breakdown progress bars */}
         <div className="lg:col-span-2 card p-5">
           <h3 className="font-display font-semibold text-ink-900 mb-1">Course Performance Breakdown</h3>
-          <p className="text-xs text-ink-500 mb-4">Current aggregate score and grade per course</p>
+          <p className="text-xs text-ink-500 mb-4">Completed courses show official grades; in-progress courses show provisional grades</p>
           {courseData.length === 0 ? (
             <div className="py-8 text-center text-ink-400 text-sm">No graded courses yet</div>
           ) : (
@@ -197,6 +200,9 @@ export function AnalyticsPage() {
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-medium text-ink-800 truncate">{c.fullName}</span>
                         <span className="text-xs text-ink-400 font-mono flex-shrink-0">{c.name}</span>
+                        <span className={`badge ${c.official ? 'bg-success-100 text-success-700' : 'bg-warning-100 text-warning-800'}`}>
+                          {c.official ? 'Official' : 'Provisional'}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-sm font-semibold text-ink-900">{c.percent?.toFixed(1)}%</span>

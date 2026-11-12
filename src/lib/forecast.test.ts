@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Assessment, CourseUnit } from './types';
 import { calculateCourseForecast, getGapToTarget, runWhatIf } from './forecast';
+import {
+  cgpa,
+  courseCurrentGP,
+  courseOfficialGP,
+  isCourseOfficiallyComplete,
+  LEGACY_COURSE_COMPLETED_DEFAULT,
+  semesterGPA,
+} from './types';
 
-function makeCourse(assessments: Assessment[]): CourseUnit {
+function makeCourse(assessments: Assessment[], completed = true): CourseUnit {
   return {
     id: 'course',
     name: 'Course',
@@ -14,6 +22,7 @@ function makeCourse(assessments: Assessment[]): CourseUnit {
     topics: [],
     documents: [],
     createdAt: 0,
+    completed,
   };
 }
 
@@ -115,5 +124,67 @@ describe('course forecast', () => {
     expect(simulatorForecast.requiredPoints).toBe(coursePageForecast.requiredPoints);
     expect(simulatorForecast.remainingWeight).toBe(coursePageForecast.remainingWeight);
     expect(simulatorForecast.requiredPercent).toBe(coursePageForecast.requiredPercent);
+  });
+
+  it('excludes incomplete courses from the official semester GPA and CGPA', () => {
+    const incomplete = makeCourse([
+      assessment('coursework', 40, 39, 40),
+      assessment('exam', 60, null, 100),
+    ], false);
+    const complete = makeCourse([
+      assessment('coursework', 40, 39, 40),
+      assessment('exam', 60, 50, 60),
+    ], true);
+
+    expect(courseCurrentGP(incomplete)).toBe(0);
+    expect(semesterGPA([incomplete, complete], 'semester')).toBe(5);
+    expect(cgpa([incomplete, complete])).toBe(5);
+  });
+
+  it('keeps unmarked courses out of the official GPA even when they are still in progress', () => {
+    const incomplete = makeCourse([
+      assessment('coursework', 40, null, 40),
+      assessment('exam', 60, null, 100),
+    ], false);
+    const complete = makeCourse([
+      assessment('coursework', 40, 39, 40),
+      assessment('exam', 60, 50, 60),
+    ], true);
+
+    expect(semesterGPA([incomplete, complete], 'semester')).toBe(5);
+    expect(cgpa([incomplete, complete])).toBe(5);
+  });
+
+  it('treats a missing completion flag as legacy-complete and false as in-progress', () => {
+    const legacy = makeCourse([assessment('result', 100, 75, 100)]);
+    delete legacy.completed;
+    const inProgress = { ...legacy, completed: false };
+
+    expect(LEGACY_COURSE_COMPLETED_DEFAULT).toBe(true);
+    expect(isCourseOfficiallyComplete(legacy)).toBe(true);
+    expect(courseOfficialGP(legacy)).toBe(4.5);
+    expect(isCourseOfficiallyComplete(inProgress)).toBe(false);
+    expect(courseOfficialGP(inProgress)).toBeNull();
+    expect(cgpa([legacy, inProgress])).toBe(4.5);
+  });
+
+  it('keeps what-if projections separate and does not change marks or official CGPA', () => {
+    const inProgress = makeCourse([
+      assessment('coursework', 60, 60, 100),
+      assessment('exam', 40, null, 100),
+    ], false);
+    const savedAssessments = structuredClone(inProgress.assessments);
+
+    const projection = runWhatIf(
+      [inProgress],
+      { [inProgress.id]: 90 },
+      {},
+      { [inProgress.id]: 80 },
+    );
+
+    expect(cgpa([inProgress])).toBeNull();
+    expect(projection.projectedCGPA).toBe(4);
+    expect(projection.courseProjections[0].projectedPercent).toBe(72);
+    expect(inProgress.assessments).toEqual(savedAssessments);
   });
 });
